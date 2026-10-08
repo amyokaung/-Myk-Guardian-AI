@@ -20,8 +20,7 @@
     "lucide": "^0.468.0",
     "@capacitor/geolocation": "^7.1.5",
     "capacitor-voice-recorder": "^7.0.6",
-    "@capacitor-community/speech-recognition": "^7.0.1",
-    "@capacitor-community/text-to-speech": "^6.0.0"
+    "@capacitor-community/speech-recognition": "^7.0.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
