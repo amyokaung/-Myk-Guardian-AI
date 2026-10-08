@@ -1,6 +1,8 @@
 import './style.css';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 const KEY_NAME = 'myk.openrouter.key';
@@ -57,8 +59,30 @@ function renderChat(view: HTMLElement) {
   view.innerHTML = `
     <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
     <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'MYK AI'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
-    <form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
+    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button><button class="secondary" id="speakLast" type="button">🔊 နောက်ဆုံးအဖြေဖတ်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
     <p class="hint">AI က ဖုန်းအလုပ်တွေကို ကိုယ်တိုင်မလုပ်နိုင်သေးပါ။ ခွင့်ပြုထားပြီး ပံ့ပိုးထားတဲ့ Action များကိုသာ အတည်ပြုချက်နဲ့ လုပ်ဆောင်မယ်။</p>`;
+  view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
+    const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
+    const input = view.querySelector<HTMLTextAreaElement>('#prompt')!;
+    button.disabled = true; button.textContent = 'နားထောင်နေသည်…';
+    try {
+      const available = await SpeechRecognition.available();
+      if (!available.available) throw new Error('ဒီဖုန်းမှာ Speech Recognition မရပါ။ Google Speech Services ကို စစ်ပါ။');
+      const permission = await SpeechRecognition.requestPermissions();
+      if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
+      const result = await SpeechRecognition.start({ language: 'my-MM', maxResults: 1, prompt: 'မြန်မာလို ပြောပါ', partialResults: false, popup: true });
+      const transcript = result.matches?.[0]?.trim();
+      if (transcript) { input.value = transcript; input.focus(); }
+      else alert('အသံကို စာသားအဖြစ် မရရှိပါ။ ဖုန်းတွင် မြန်မာ Speech Recognition ပံ့ပိုးမှုကို စစ်ပါ။');
+    } catch (err) { alert('အသံဖြင့် ရိုက်မရပါ။ ' + (err instanceof Error ? err.message : 'Speech recognition error')); }
+    finally { button.disabled = false; button.textContent = '🎙 အသံဖြင့် ရိုက်ရန်'; }
+  });
+  view.querySelector<HTMLButtonElement>('#speakLast')!.addEventListener('click', async () => {
+    const last = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!last) { alert('ဖတ်ရန် AI အဖြေ မရှိသေးပါ။'); return; }
+    try { await TextToSpeech.speak({ text: last.content, lang: 'my-MM', rate: 0.9, pitch: 1.0, volume: 1.0 }); }
+    catch (err) { alert('အသံဖတ်မရပါ။ ဖုန်း TTS တွင် မြန်မာဘာသာအသံ မရှိနိုင်ပါ။ ' + (err instanceof Error ? err.message : '')); }
+  });
   view.querySelector<HTMLFormElement>('#chatForm')!.addEventListener('submit', async e => {
     e.preventDefault();
     const input = view.querySelector<HTMLTextAreaElement>('#prompt')!;
