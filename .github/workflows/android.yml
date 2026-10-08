@@ -58,12 +58,17 @@ jobs:
           xml_dir.mkdir(parents=True, exist_ok=True)
 
           main_activity = java_dir / "MainActivity.java"
-          activity_text = main_activity.read_text() if main_activity.exists() else "package com.myk.guardianai;\\n\\nimport com.getcapacitor.BridgeActivity;\\n\\npublic class MainActivity extends BridgeActivity {}\\n"
-          if "MykAccessibilityPlugin" not in activity_text:
-              activity_text = activity_text.replace("import com.getcapacitor.BridgeActivity;", "import com.getcapacitor.BridgeActivity;\\nimport android.os.Bundle;\\nimport com.myk.guardianai.MykAccessibilityPlugin;")
-              activity_text = re.sub(r"public class MainActivity extends BridgeActivity \\{\\s*\\}", "public class MainActivity extends BridgeActivity {\\n    @Override\\n    public void onCreate(Bundle savedInstanceState) {\\n        registerPlugin(MykAccessibilityPlugin.class);\\n        super.onCreate(savedInstanceState);\\n    }\\n}", activity_text)
-              main_activity.write_text(activity_text)
-
+          main_activity.write_text(
+              "package com.myk.guardianai;" + chr(10) +
+              "import android.os.Bundle;" + chr(10) +
+              "import com.getcapacitor.BridgeActivity;" + chr(10) +
+              "import com.myk.guardianai.MykAccessibilityPlugin;" + chr(10) +
+              "public class MainActivity extends BridgeActivity {" + chr(10) +
+              "    @Override public void onCreate(Bundle savedInstanceState) {" + chr(10) +
+              "        registerPlugin(MykAccessibilityPlugin.class);" + chr(10) +
+              "        super.onCreate(savedInstanceState);" + chr(10) +
+              "    }" + chr(10) + "}" + chr(10)
+          )
           (java_dir / "MykAccessibilityPlugin.java").write_text("""package com.myk.guardianai;
           import android.content.ComponentName;
           import android.content.Intent;
