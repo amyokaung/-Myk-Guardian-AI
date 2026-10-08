@@ -1,10 +1,13 @@
 import './style.css';
+import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { TextToSpeech } from '@capacitor-community/text-to-speech';
 
 type Message = { role: 'user' | 'assistant'; content: string };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean }> };
+const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
 const TTS_SERVER_NAME = 'myk.neural.tts.server';
@@ -249,6 +252,36 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     } finally {
       button.disabled = false;
     }
+  });
+  const accessibilityStatus = view.querySelector<HTMLElement>('#accessibilityStatus')!;
+  const notificationStatus = view.querySelector<HTMLElement>('#notificationAccessStatus')!;
+  const refreshNativeStatus = async () => {
+    try {
+      const status = await MykNative.getStatus();
+      accessibilityStatus.textContent = status.accessibilityEnabled ? 'ဖွင့်ထားသည် — Accessibility Service Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+      notificationStatus.textContent = status.notificationEnabled ? 'ဖွင့်ထားသည် — Notification Access Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+    } catch (err) {
+      accessibilityStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
+      notificationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
+    }
+  };
+  void refreshNativeStatus();
+  view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
+    try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ Myk Guardian AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
+    catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+  });
+  view.querySelector<HTMLButtonElement>('#enableNotifications')!.addEventListener('click', async () => {
+    try { await MykNative.openNotificationSettings(); alert('Notification Access စာမျက်နှာမှာ Myk Guardian AI ကို ဖွင့်ပေးပါ။'); }
+    catch (err) { alert('Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+  });
+  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
+    if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
+    try {
+      const status = await MykNative.getStatus();
+      if (!status.accessibilityEnabled) { alert('အရင် Accessibility Service ကို Android Settings မှ Enable လုပ်ပါ။'); return; }
+      const result = await MykNative.performAction({ action: 'back' });
+      if (!result.success) alert('Android က Back action ကို မလုပ်နိုင်ခဲ့ပါ။');
+    } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
   view.querySelector<HTMLButtonElement>('#chooseFile')!.addEventListener('click', () => picker.click());
