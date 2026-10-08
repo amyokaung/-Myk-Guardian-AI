@@ -101,7 +101,7 @@ jobs:
                   JSObject result = new JSObject(); result.put("success", ok); call.resolve(result);
               }
           }
-          """.replace(/^          /gm, ""))
+          """)
           (java_dir / "MykAccessibilityService.java").write_text("""package com.myk.guardianai;
           import android.accessibilityservice.AccessibilityService;
           import android.view.accessibility.AccessibilityEvent;
@@ -112,7 +112,7 @@ jobs:
               @Override public void onInterrupt() {}
               @Override public void onDestroy() { if (instance == this) instance = null; super.onDestroy(); }
           }
-          """.replace(/^          /gm, ""))
+          """)
           (java_dir / "MykNotificationListenerService.java").write_text("""package com.myk.guardianai;
           import android.service.notification.NotificationListenerService;
           import android.service.notification.StatusBarNotification;
@@ -120,7 +120,7 @@ jobs:
               @Override public void onNotificationPosted(StatusBarNotification sbn) { /* No notification content is stored or uploaded. */ }
               @Override public void onNotificationRemoved(StatusBarNotification sbn) {}
           }
-          """.replace(/^          /gm, ""))
+          """)
           (xml_dir / "myk_accessibility_service.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
           <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
               android:accessibilityEventTypes="typeWindowStateChanged|typeViewFocused"
@@ -128,7 +128,7 @@ jobs:
               android:notificationTimeout="100"
               android:canRetrieveWindowContent="false"
               android:description="@string/app_name" />
-          """.replace(/^          /gm, ""))
+          """)
           manifest = app_dir / "AndroidManifest.xml"
           s = manifest.read_text()
           if "MykAccessibilityService" not in s:
