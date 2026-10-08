@@ -48,7 +48,7 @@ jobs:
           for permission in permissions:
               name = permission.split('name="')[1].split('"')[0]
               if name not in s:
-                  s = s.replace('<application', permission + '\\n    <application', 1)
+                  s = s.replace('<application', permission + chr(10) + '    <application', 1)
           p.write_text(s)
           print("Ensured location and microphone permissions in AndroidManifest.xml")
           PY
