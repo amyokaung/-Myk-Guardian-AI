@@ -7,8 +7,8 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 type Message = { role: 'user' | 'assistant'; content: string };
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
-const TTS_KEY_NAME = 'myk.googlecloud.tts.key';
-const TTS_VOICE_NAME = 'myk.googlecloud.tts.voice';
+const TTS_SERVER_NAME = 'myk.neural.tts.server';
+const TTS_VOICE_NAME = 'myk.neural.tts.voice';
 const PERM_NAME = 'myk.agent.permissions';
 const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -82,34 +82,47 @@ function renderChat(view: HTMLElement) {
   view.querySelector<HTMLButtonElement>('#speakLast')!.addEventListener('click', async () => {
     const last = [...messages].reverse().find(m => m.role === 'assistant');
     if (!last) { alert('ဖတ်ရန် AI အဖြေ မရှိသေးပါ။'); return; }
-    const apiKey = localStorage.getItem(TTS_KEY_NAME)?.trim();
-    if (!apiKey) {
-      alert('မြန်မာ Cloud TTS မချိတ်ရသေးပါ။ Settings ထဲက Google Cloud TTS API Key ကို ထည့်ပါ။');
+    const server = (localStorage.getItem(TTS_SERVER_NAME) || '').trim().replace(/\/$/, '');
+    if (!server) {
+      alert('Neural TTS Server URL မထည့်ရသေးပါ။ Settings ထဲမှာ TTS Server URL ထည့်ပါ။ Server ကို အရင် deploy/run လုပ်ထားရပါမယ်။');
       activeTab = 'settings'; render(); return;
     }
     const button = view.querySelector<HTMLButtonElement>('#speakLast')!;
-    button.disabled = true; button.textContent = 'အသံဖန်တီးနေသည်…';
+    button.disabled = true; button.textContent = 'မြန်မာအသံ ဖန်တီးနေသည်…';
     try {
-      // Gemini-TTS supports Burmese (my-MM) in Google Cloud Text-to-Speech.
-      const response = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(apiKey), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: { text: last.content.slice(0, 3500), prompt: 'Speak clearly and naturally in Burmese (Myanmar), with accurate Burmese pronunciation.' },
-          voice: { languageCode: 'my-MM', name: localStorage.getItem(TTS_VOICE_NAME) || 'Kore', modelName: 'gemini-2.5-flash-tts' },
-          audioConfig: { audioEncoding: 'MP3' }
-        })
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        const detail = data?.error?.message || ('HTTP ' + response.status);
-        throw new Error(detail + (response.status === 401 || response.status === 403 ? ' — Google Cloud project တွင် Cloud Text-to-Speech API ဖွင့်ထားမှု၊ billing နှင့် API key restriction ကို စစ်ပါ။' : ''));
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 60000);
+      let response: Response;
+      try {
+        response = await fetch(server + '/api/synthesize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: last.content.slice(0, 2500),
+            voice: localStorage.getItem(TTS_VOICE_NAME) || 'male',
+            rate: '-2%'
+          }),
+          signal: controller.signal
+        });
+      } finally {
+        window.clearTimeout(timeout);
       }
-      if (!data?.audioContent) throw new Error('TTS service က audio data မပြန်ပေးပါ။');
-      const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
-      await audio.play();
+      if (!response.ok) {
+        const detail = response.headers.get('content-type')?.includes('application/json')
+          ? ((await response.json())?.error || ('HTTP ' + response.status))
+          : ('HTTP ' + response.status);
+        throw new Error(String(detail));
+      }
+      const audioBlob = await response.blob();
+      if (!audioBlob.size) throw new Error('TTS server က အသံဖိုင်အလွတ် ပြန်ပေးပါတယ်။');
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      try { await audio.play(); } finally { audio.addEventListener('ended', () => URL.revokeObjectURL(audioUrl), { once: true }); }
     } catch (err) {
-      alert('Cloud TTS အသံဖတ်မရပါ။ ' + (err instanceof Error ? err.message : 'Unknown error'));
+      const message = err instanceof Error && err.name === 'AbortError'
+        ? 'TTS server တုံ့ပြန်ချိန် ၆၀ စက္ကန့်ကျော်သွားပါတယ်။ Server နဲ့ အင်တာနက်ကို စစ်ပါ။'
+        : (err instanceof Error ? err.message : 'Unknown error');
+      alert('Neural TTS အသံဖတ်မရပါ။ ' + message + '\nServer URL, server status နဲ့ internet ကို စစ်ပါ။');
     } finally {
       button.disabled = false; button.textContent = '🔊 နောက်ဆုံးအဖြေဖတ်ရန်';
     }
@@ -247,26 +260,28 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
 function renderSettings(view: HTMLElement) {
   const key = localStorage.getItem(KEY_NAME) || '';
   const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-  const ttsKey = localStorage.getItem(TTS_KEY_NAME) || '';
-  const ttsVoice = localStorage.getItem(TTS_VOICE_NAME) || 'Kore';
+  const ttsServer = localStorage.getItem(TTS_SERVER_NAME) || '';
+  const ttsVoice = localStorage.getItem(TTS_VOICE_NAME) || 'male';
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">LOCAL CONFIG</span></div>
     <div class="card settings-card"><label for="apiKey">OpenRouter API Key</label><input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}"><small>Key ကို source code ထဲ မထည့်ပါနဲ့။ ဒီ starter မှာ browser localStorage ထဲ သိမ်းထားတာဖြစ်လို့ public release အတွက် encrypted native storage သို့မဟုတ် backend proxy ထပ်တည်ဆောက်ဖို့လိုပါတယ်။</small>
     <label for="modelId">Model ID</label><input id="modelId" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><small>Model ID ကို OpenRouter model catalog မှာ စစ်ပြီး ထည့်ပါ။ Model အားလုံး အခမဲ့မဟုတ်ပါ။</small>
-    <div class="divider"></div><h3>မြန်မာ Cloud TTS</h3><p class="muted">ဖုန်းရဲ့ မြန်မာအသံမလိုဘဲ Google Cloud Gemini-TTS ကနေ မြန်မာအသံဖန်တီးမယ်။ အင်တာနက်၊ Cloud Text-to-Speech API ဖွင့်ထားသော Google Cloud project နှင့် billing လိုအပ်နိုင်သည်။</p>
-    <label for="ttsApiKey">Google Cloud TTS API Key</label><input id="ttsApiKey" type="password" autocomplete="off" placeholder="Google Cloud API key" value="${esc(ttsKey)}">
-    <label for="ttsVoice">အသံပုံစံ</label><select id="ttsVoice"><option value="Kore" ${ttsVoice==='Kore'?'selected':''}>Kore — Female style</option><option value="Charon" ${ttsVoice==='Charon'?'selected':''}>Charon — Male style</option><option value="Aoede" ${ttsVoice==='Aoede'?'selected':''}>Aoede — Female style</option><option value="Fenrir" ${ttsVoice==='Fenrir'?'selected':''}>Fenrir — Male style</option></select>
-    <small>API key ကို ဒီဖုန်းရဲ့ localStorage ထဲမှာပဲ သိမ်းထားသည်။ Public app အတွက် backend proxy သုံးပြီး key ကို မျှဝေမထားပါနဲ့။ API key ကို website/referrer restriction နဲ့ Cloud Text-to-Speech API တစ်ခုတည်းအတွက် ကန့်သတ်ပါ။</small>
-    <button class="primary wide" id="saveSettings">Save settings</button><button class="secondary wide" id="showKey">${key?'Show OpenRouter Key':'OpenRouter Key မထည့်ရသေးပါ'}</button><button class="danger wide" id="deleteKey">OpenRouter Key ဖျက်မယ်</button><button class="danger wide" id="deleteTtsKey">TTS API Key ဖျက်မယ်</button></div>
-    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · OpenRouter API · Google Cloud Gemini-TTS</p><p class="muted">ဖုန်းစွမ်းဆောင်ရည်အားလုံးကို အက်ပ်တစ်ခုက အလိုအလျောက် မရနိုင်ပါ။ Android version၊ OS permission နဲ့ native implementation အပေါ် မူတည်ပါတယ်။</p></div>`;
+    <div class="divider"></div><h3>မြန်မာ Neural TTS (API Key မလို)</h3><p class="muted">Myanmar TTS Pipeline ကို ချိတ်ဆက်မယ်။ Google Cloud billing မလိုပါ။ ဒါပေမဲ့ TTS server ကို သီးခြား run/deploy လုပ်ထားပြီး အင်တာနက်ကနေ ရောက်နိုင်တဲ့ HTTPS URL ရှိရပါမယ်။</p>
+    <label for="ttsServer">Neural TTS Server URL</label><input id="ttsServer" type="url" autocomplete="url" placeholder="https://your-tts-server.example.com" value="${esc(ttsServer)}">
+    <small>Server URL မှာ /api/synthesize ကို ကိုယ်တိုင်ထည့်ရန် မလိုပါ။ ဥပမာ https://your-tts-server.example.com ။ Server မရှိသေးရင် ဒီ field ထည့်ရုံနဲ့ အသံမထွက်သေးပါ။</small>
+    <label for="ttsVoice">အသံပုံစံ</label><select id="ttsVoice"><option value="male" ${ttsVoice==='male'?'selected':''}>Thiha — အမျိုးသားအသံ</option><option value="female" ${ttsVoice==='female'?'selected':''}>Nilar — အမျိုးသမီးအသံ</option></select>
+    <button class="secondary wide" id="testTts">TTS Server စမ်းသပ်ရန်</button>
+    <button class="primary wide" id="saveSettings">Save settings</button><button class="secondary wide" id="showKey">${key?'Show OpenRouter Key':'OpenRouter Key မထည့်ရသေးပါ'}</button><button class="danger wide" id="deleteKey">OpenRouter Key ဖျက်မယ်</button></div>
+    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · OpenRouter API · Myanmar Neural TTS server</p><p class="muted">ဖုန်းစွမ်းဆောင်ရည်အားလုံးကို အက်ပ်တစ်ခုက အလိုအလျောက် မရနိုင်ပါ။ Android version၊ OS permission နဲ့ native implementation အပေါ် မူတည်ပါတယ်။</p></div>`;
   view.querySelector('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
-    const tk = view.querySelector<HTMLInputElement>('#ttsApiKey')!.value.trim();
+    const ts = view.querySelector<HTMLInputElement>('#ttsServer')!.value.trim().replace(/\/$/, '');
     const tv = view.querySelector<HTMLSelectElement>('#ttsVoice')!.value;
     if (k && !k.startsWith('sk-or-')) { if (!confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return; }
     if (k) localStorage.setItem(KEY_NAME, k); else localStorage.removeItem(KEY_NAME);
     if (m) localStorage.setItem(MODEL_NAME, m); else localStorage.setItem(MODEL_NAME, DEFAULT_MODEL);
-    if (tk) localStorage.setItem(TTS_KEY_NAME, tk); else localStorage.removeItem(TTS_KEY_NAME);
+    if (ts && !/^https?:\/\//i.test(ts)) { alert('TTS Server URL ကို https:// သို့မဟုတ် http:// နဲ့ စတင်ထည့်ပါ။'); return; }
+    if (ts) localStorage.setItem(TTS_SERVER_NAME, ts); else localStorage.removeItem(TTS_SERVER_NAME);
     localStorage.setItem(TTS_VOICE_NAME, tv);
     alert('Settings ကို သိမ်းပြီးပါပြီ။'); render();
   });
@@ -279,9 +294,27 @@ function renderSettings(view: HTMLElement) {
     if (!confirm('ဒီဖုန်းထဲက OpenRouter API Key ကို ဖျက်မှာ သေချာပါသလား?')) return;
     localStorage.removeItem(KEY_NAME); view.querySelector<HTMLInputElement>('#apiKey')!.value = ''; alert('OpenRouter Key ဖျက်ပြီးပါပြီ။');
   });
-  view.querySelector('#deleteTtsKey')!.addEventListener('click', () => {
-    if (!confirm('ဒီဖုန်းထဲက Google Cloud TTS API Key ကို ဖျက်မှာ သေချာပါသလား?')) return;
-    localStorage.removeItem(TTS_KEY_NAME); view.querySelector<HTMLInputElement>('#ttsApiKey')!.value = ''; alert('TTS Key ဖျက်ပြီးပါပြီ။');
+  view.querySelector('#testTts')!.addEventListener('click', async () => {
+    const url = view.querySelector<HTMLInputElement>('#ttsServer')!.value.trim().replace(/\/$/, '');
+    if (!url) { alert('အရင်ဆုံး TTS Server URL ထည့်ပါ။'); return; }
+    const button = view.querySelector<HTMLButtonElement>('#testTts')!;
+    button.disabled = true; button.textContent = 'စမ်းသပ်နေသည်…';
+    try {
+      const res = await fetch(url + '/api/synthesize', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: 'မင်္ဂလာပါ။ မြန်မာ Neural TTS စမ်းသပ်နေပါတယ်။', voice: view.querySelector<HTMLSelectElement>('#ttsVoice')!.value })
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status + ' — Server log ကိုစစ်ပါ။');
+      const blob = await res.blob();
+      if (!blob.size) throw new Error('အသံဖိုင်အလွတ် ပြန်လာပါတယ်။');
+      const urlObject = URL.createObjectURL(blob);
+      const audio = new Audio(urlObject);
+      await audio.play();
+      audio.addEventListener('ended', () => URL.revokeObjectURL(urlObject), { once: true });
+      alert('TTS server က အသံပြန်ပေးပြီး ဖွင့်နိုင်ခဲ့ပါတယ်။');
+    } catch (err) {
+      alert('TTS စမ်းသပ်မှု မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nServer URL, server running ဖြစ်မှုနဲ့ CORS ကို စစ်ပါ။');
+    } finally { button.disabled = false; button.textContent = 'TTS Server စမ်းသပ်ရန်'; }
   });
 }
 render();
