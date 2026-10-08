@@ -17,7 +17,8 @@
     "@capacitor/haptics": "^7.0.2",
     "@capacitor/keyboard": "^7.0.2",
     "@capacitor/status-bar": "^7.0.2",
-    "lucide": "^0.468.0"
+    "lucide": "^0.468.0",
+    "@capacitor/geolocation": "^7.1.5"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.3",
