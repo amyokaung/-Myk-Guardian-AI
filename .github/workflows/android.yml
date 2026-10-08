@@ -36,6 +36,22 @@ jobs:
         run: |
           if [ ! -d android ]; then npx cap add android; fi
           npx cap sync android
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permissions = [
+              '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
+              '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+          ]
+          for permission in permissions:
+              name = permission.split('name="')[1].split('"')[0]
+              if name not in s:
+                  s = s.replace('<application', permission + '\\n    <application', 1)
+          p.write_text(s)
+          print("Ensured location and microphone permissions in AndroidManifest.xml")
+          PY
       - name: Build debug APK
         run: |
           cd android
