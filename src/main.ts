@@ -1,4 +1,5 @@
 import './style.css';
+import { Geolocation } from '@capacitor/geolocation';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 const KEY_NAME = 'myk.openrouter.key';
@@ -122,16 +123,67 @@ function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
   });
 }
 function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
-  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">OWNER AUTHORITY</span><h2>Permission Center</h2></div><span class="pill">YOU CONTROL</span></div>
-    <div class="notice"><b>မင်းရဲ့ဖုန်း၊ မင်းရဲ့ဆုံးဖြတ်ချက်။</b><p>Feature တစ်ခုချင်းစီကို မင်းကိုယ်တိုင် အဖွင့်/အပိတ်လုပ်နိုင်မယ်။ ဒီ switches တွေက လောလောဆယ် app အတွင်း preference များသာဖြစ်ပြီး Android OS permission ကို အလိုအလျောက် မပေးပါ။</p></div>
-    <div class="card">${capabilities.map(c=>`<label class="permission-row"><div class="perm-icon">${c.id==='microphone'?'◖':c.id==='location'?'⌖':c.id==='files'?'▤':c.id==='notifications'?'♧':c.id==='accessibility'?'⌘':'▣'}</div><div class="perm-copy"><b>${c.title}</b><small>${c.desc}</small><em>${c.level}</em></div><input type="checkbox" data-perm="${c.id}" ${perms[c.id]?'checked':''} aria-label="${c.title}"></label>`).join('')}</div>
-    <button class="primary wide" id="savePerms">Save permission preferences</button>`;
-  view.querySelector('#savePerms')!.addEventListener('click', () => {
-    const next: Record<string, boolean> = {};
-    view.querySelectorAll<HTMLInputElement>('[data-perm]').forEach(i => next[i.dataset.perm!] = i.checked);
-    localStorage.setItem(PERM_NAME, JSON.stringify(next));
-    alert('Preference များကို ဒီဖုန်းရဲ့ app storage ထဲမှာ သိမ်းပြီးပါပြီ။ OS permission များကို သီးခြားခွင့်ပြုရပါမယ်။');
-    render();
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">OWNER AUTHORITY</span><h2>Permission Center</h2></div><span class="pill">REAL PERMISSION TESTS</span></div>
+    <div class="notice"><b>ဖုန်းခွင့်ပြုချက်များကို အမှန်တကယ် စမ်းသပ်ခြင်း</b><p>ဒီနေရာမှာ Android က ခွင့်ပြုချက်တောင်းတဲ့ feature များကို တကယ်စမ်းနိုင်ပါတယ်။ Accessibility နဲ့ Notification Access ကတော့ သီးခြား native service လိုအပ်နေသေးပြီး ဒီ build မှာ မဖွင့်နိုင်သေးပါ။</p></div>
+    <div class="card permission-tools">
+      <div class="status-row"><div><b>📍 တည်နေရာ (Location)</b><small id="locationStatus">Permission အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="requestLocation">စမ်းသပ်ရန်</button></div>
+      <div class="status-row"><div><b>🎙 မိုက်ခရိုဖုန်း (Microphone)</b><small id="micStatus">ခွင့်ပြုချက် မစမ်းရသေးပါ</small></div><button class="secondary" id="requestMic">စမ်းသပ်ရန်</button></div>
+      <div class="status-row"><div><b>📁 ဖိုင်ရွေးချယ်ခြင်း</b><small id="fileStatus">Android file picker ကိုဖွင့်ပြီး ဖိုင်တစ်ခုရွေးနိုင်သည်</small></div><button class="secondary" id="chooseFile">ဖိုင်ရွေးရန်</button></div>
+      <div class="status-row"><div><b>🔔 Notification Access</b><small>အခြား app များ၏ notification ကို ဖတ်ခြင်း မပါသေးပါ</small></div><span class="state">NATIVE လိုအပ်</span></div>
+      <div class="status-row"><div><b>⌘ Accessibility / Screen automation</b><small>Android Accessibility Service native implementation မပါသေးပါ</small></div><span class="state">NATIVE လိုအပ်</span></div>
+      <div class="status-row"><div><b>▣ App ဖွင့်ခြင်း / ဖုန်း Settings</b><small>App launch နှင့် system settings control ကို နောက်အဆင့်တွင် native ချိတ်ဆက်ရမည်</small></div><span class="state">NATIVE လိုအပ်</span></div>
+      <input id="filePicker" type="file" hidden>
+    </div>
+    <p class="hint">Location စမ်းသပ်ရာတွင် တည်နေရာကို ရယူပြီး screen ပေါ်တွင်သာ ပြမည်။ Microphone စမ်းသပ်ရာတွင် အသံကို မှတ်တမ်းမတင်ဘဲ ချက်ချင်းရပ်မည်။</p>`;
+  const locationStatus = view.querySelector<HTMLElement>('#locationStatus')!;
+  const requestLocation = view.querySelector<HTMLButtonElement>('#requestLocation')!;
+  const showLocationPermission = async () => {
+    try {
+      const status = await Geolocation.checkPermissions();
+      locationStatus.textContent = `Location permission: ${status.location}`;
+    } catch {
+      locationStatus.textContent = 'Permission အခြေအနေကို စစ်မရပါ။ Android app permissions ကို စစ်ပါ။';
+    }
+  };
+  void showLocationPermission();
+  requestLocation.addEventListener('click', async () => {
+    requestLocation.disabled = true;
+    locationStatus.textContent = 'Android permission ကို စစ်ဆေး/တောင်းဆိုနေသည်…';
+    try {
+      let status = await Geolocation.checkPermissions();
+      if (status.location !== 'granted') status = await Geolocation.requestPermissions();
+      if (status.location !== 'granted') {
+        locationStatus.textContent = `ခွင့်မပြုထားပါ: ${status.location}. Android Settings ထဲမှာ Location permission ကို Allow လုပ်ပါ။`;
+      } else {
+        const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000 });
+        locationStatus.textContent = `ခွင့်ပြုပြီး။ စမ်းသပ်ရလဒ်: ${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)}`;
+      }
+    } catch (err) {
+      locationStatus.textContent = `Location စမ်းသပ်မှု မအောင်မြင်ပါ: ${err instanceof Error ? err.message : 'unknown error'}`;
+    } finally {
+      requestLocation.disabled = false;
+    }
+  });
+  view.querySelector<HTMLButtonElement>('#requestMic')!.addEventListener('click', async () => {
+    const status = view.querySelector<HTMLElement>('#micStatus')!;
+    const button = view.querySelector<HTMLButtonElement>('#requestMic')!;
+    button.disabled = true;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) throw new Error('ဒီ WebView မှာ microphone API မရနိုင်ပါ။');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+      status.textContent = 'Microphone permission ရရှိပါပြီ။ အသံ stream ကို ချက်ချင်းရပ်ထားသည်။';
+    } catch (err) {
+      status.textContent = `Microphone မရပါ: ${err instanceof Error ? err.message : 'permission denied'}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+  const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
+  view.querySelector<HTMLButtonElement>('#chooseFile')!.addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => {
+    const file = picker.files?.[0];
+    view.querySelector<HTMLElement>('#fileStatus')!.textContent = file ? `ရွေးထားသည်: ${file.name} (${Math.ceil(file.size / 1024)} KB) — ဖိုင်ကို upload မလုပ်ပါ။` : 'ဖိုင်မရွေးထားပါ။';
   });
 }
 function renderSettings(view: HTMLElement) {
