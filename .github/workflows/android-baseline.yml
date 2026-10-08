@@ -1,0 +1,59 @@
+name: Build Myk Guardian AI Baseline APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-baseline.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: npm install
+      - name: Build web app
+        run: npm run build
+      - name: Add Android platform and sync
+        run: |
+          if [ ! -d android ]; then npx cap add android; fi
+          npx cap sync android
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("android/app/src/main/AndroidManifest.xml")
+          s = p.read_text()
+          permissions = [
+              '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
+              '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
+              '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+          ]
+          for permission in permissions:
+              name = permission.split('name="')[1].split('"')[0]
+              if name not in s:
+                  s = s.replace('<application', permission + chr(10) + '    <application', 1)
+          p.write_text(s)
+          print("Baseline APK: standard Capacitor Android only; no custom Accessibility or Notification services.")
+          PY
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+      - name: Upload baseline APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: myk-guardian-ai-baseline-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
