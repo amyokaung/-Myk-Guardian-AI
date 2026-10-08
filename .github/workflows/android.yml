@@ -100,10 +100,47 @@ jobs:
               }
               @PluginMethod public void performAction(PluginCall call) {
                   String action = call.getString("action", "");
-                  boolean ok = false;
-                  MykAccessibilityService service = MykAccessibilityService.instance;
-                  if (service != null && "back".equals(action)) ok = service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
-                  JSObject result = new JSObject(); result.put("success", ok); call.resolve(result);
+                  if (!"back".equals(action)) {
+                      JSObject result = new JSObject();
+                      result.put("success", false);
+                      result.put("message", "Unsupported action: " + action);
+                      call.resolve(result);
+                      return;
+                  }
+                  // The user may have just enabled Accessibility. Android can take a
+                  // moment to reconnect the service, so retry briefly on the main thread.
+                  final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+                  final int[] attempts = {0};
+                  final Runnable[] retry = new Runnable[1];
+                  retry[0] = () -> {
+                      MykAccessibilityService service = MykAccessibilityService.instance;
+                      if (service != null) {
+                          try {
+                              boolean ok = service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+                              JSObject result = new JSObject();
+                              result.put("success", ok);
+                              result.put("message", ok ? "Back action dispatched" : "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
+                              call.resolve(result);
+                              return;
+                          } catch (Exception e) {
+                              JSObject result = new JSObject();
+                              result.put("success", false);
+                              result.put("message", "Back action error: " + e.getMessage());
+                              call.resolve(result);
+                              return;
+                          }
+                      }
+                      attempts[0]++;
+                      if (attempts[0] < 10) {
+                          handler.postDelayed(retry[0], 200);
+                      } else {
+                          JSObject result = new JSObject();
+                          result.put("success", false);
+                          result.put("message", "Accessibility is enabled in Settings, but the native service is not connected yet. Turn the service off/on, then retry.");
+                          call.resolve(result);
+                      }
+                  };
+                  handler.post(retry[0]);
               }
           }
           """)
