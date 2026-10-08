@@ -7,6 +7,8 @@ import { TextToSpeech } from '@capacitor-community/text-to-speech';
 type Message = { role: 'user' | 'assistant'; content: string };
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
+const TTS_KEY_NAME = 'myk.googlecloud.tts.key';
+const TTS_VOICE_NAME = 'myk.googlecloud.tts.voice';
 const PERM_NAME = 'myk.agent.permissions';
 const DEFAULT_MODEL = 'openai/gpt-4o-mini';
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -80,8 +82,37 @@ function renderChat(view: HTMLElement) {
   view.querySelector<HTMLButtonElement>('#speakLast')!.addEventListener('click', async () => {
     const last = [...messages].reverse().find(m => m.role === 'assistant');
     if (!last) { alert('ဖတ်ရန် AI အဖြေ မရှိသေးပါ။'); return; }
-    try { await TextToSpeech.speak({ text: last.content, lang: 'my-MM', rate: 0.9, pitch: 1.0, volume: 1.0 }); }
-    catch (err) { alert('အသံဖတ်မရပါ။ ဖုန်း TTS တွင် မြန်မာဘာသာအသံ မရှိနိုင်ပါ။ ' + (err instanceof Error ? err.message : '')); }
+    const apiKey = localStorage.getItem(TTS_KEY_NAME)?.trim();
+    if (!apiKey) {
+      alert('မြန်မာ Cloud TTS မချိတ်ရသေးပါ။ Settings ထဲက Google Cloud TTS API Key ကို ထည့်ပါ။');
+      activeTab = 'settings'; render(); return;
+    }
+    const button = view.querySelector<HTMLButtonElement>('#speakLast')!;
+    button.disabled = true; button.textContent = 'အသံဖန်တီးနေသည်…';
+    try {
+      // Gemini-TTS supports Burmese (my-MM) in Google Cloud Text-to-Speech.
+      const response = await fetch('https://texttospeech.googleapis.com/v1/text:synthesize?key=' + encodeURIComponent(apiKey), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: { text: last.content.slice(0, 3500), prompt: 'Speak clearly and naturally in Burmese (Myanmar), with accurate Burmese pronunciation.' },
+          voice: { languageCode: 'my-MM', name: localStorage.getItem(TTS_VOICE_NAME) || 'Kore', modelName: 'gemini-2.5-flash-tts' },
+          audioConfig: { audioEncoding: 'MP3' }
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const detail = data?.error?.message || ('HTTP ' + response.status);
+        throw new Error(detail + (response.status === 401 || response.status === 403 ? ' — Google Cloud project တွင် Cloud Text-to-Speech API ဖွင့်ထားမှု၊ billing နှင့် API key restriction ကို စစ်ပါ။' : ''));
+      }
+      if (!data?.audioContent) throw new Error('TTS service က audio data မပြန်ပေးပါ။');
+      const audio = new Audio('data:audio/mp3;base64,' + data.audioContent);
+      await audio.play();
+    } catch (err) {
+      alert('Cloud TTS အသံဖတ်မရပါ။ ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      button.disabled = false; button.textContent = '🔊 နောက်ဆုံးအဖြေဖတ်ရန်';
+    }
   });
   view.querySelector<HTMLFormElement>('#chatForm')!.addEventListener('submit', async e => {
     e.preventDefault();
@@ -216,27 +247,41 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
 function renderSettings(view: HTMLElement) {
   const key = localStorage.getItem(KEY_NAME) || '';
   const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
+  const ttsKey = localStorage.getItem(TTS_KEY_NAME) || '';
+  const ttsVoice = localStorage.getItem(TTS_VOICE_NAME) || 'Kore';
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">LOCAL CONFIG</span></div>
     <div class="card settings-card"><label for="apiKey">OpenRouter API Key</label><input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}"><small>Key ကို source code ထဲ မထည့်ပါနဲ့။ ဒီ starter မှာ browser localStorage ထဲ သိမ်းထားတာဖြစ်လို့ public release အတွက် encrypted native storage သို့မဟုတ် backend proxy ထပ်တည်ဆောက်ဖို့လိုပါတယ်။</small>
     <label for="modelId">Model ID</label><input id="modelId" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><small>Model ID ကို OpenRouter model catalog မှာ စစ်ပြီး ထည့်ပါ။ Model အားလုံး အခမဲ့မဟုတ်ပါ။</small>
-    <button class="primary wide" id="saveSettings">Save settings</button><button class="secondary wide" id="showKey">${key?'Show API Key':'Key မထည့်ရသေးပါ'}</button><button class="danger wide" id="deleteKey">API Key ဖျက်မယ်</button></div>
-    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · OpenRouter API</p><p class="muted">ဖုန်းစွမ်းဆောင်ရည်အားလုံးကို အက်ပ်တစ်ခုက အလိုအလျောက် မရနိုင်ပါ။ Android version၊ OS permission နဲ့ native implementation အပေါ် မူတည်ပါတယ်။</p></div>`;
+    <div class="divider"></div><h3>မြန်မာ Cloud TTS</h3><p class="muted">ဖုန်းရဲ့ မြန်မာအသံမလိုဘဲ Google Cloud Gemini-TTS ကနေ မြန်မာအသံဖန်တီးမယ်။ အင်တာနက်၊ Cloud Text-to-Speech API ဖွင့်ထားသော Google Cloud project နှင့် billing လိုအပ်နိုင်သည်။</p>
+    <label for="ttsApiKey">Google Cloud TTS API Key</label><input id="ttsApiKey" type="password" autocomplete="off" placeholder="Google Cloud API key" value="${esc(ttsKey)}">
+    <label for="ttsVoice">အသံပုံစံ</label><select id="ttsVoice"><option value="Kore" ${ttsVoice==='Kore'?'selected':''}>Kore — Female style</option><option value="Charon" ${ttsVoice==='Charon'?'selected':''}>Charon — Male style</option><option value="Aoede" ${ttsVoice==='Aoede'?'selected':''}>Aoede — Female style</option><option value="Fenrir" ${ttsVoice==='Fenrir'?'selected':''}>Fenrir — Male style</option></select>
+    <small>API key ကို ဒီဖုန်းရဲ့ localStorage ထဲမှာပဲ သိမ်းထားသည်။ Public app အတွက် backend proxy သုံးပြီး key ကို မျှဝေမထားပါနဲ့။ API key ကို website/referrer restriction နဲ့ Cloud Text-to-Speech API တစ်ခုတည်းအတွက် ကန့်သတ်ပါ။</small>
+    <button class="primary wide" id="saveSettings">Save settings</button><button class="secondary wide" id="showKey">${key?'Show OpenRouter Key':'OpenRouter Key မထည့်ရသေးပါ'}</button><button class="danger wide" id="deleteKey">OpenRouter Key ဖျက်မယ်</button><button class="danger wide" id="deleteTtsKey">TTS API Key ဖျက်မယ်</button></div>
+    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · OpenRouter API · Google Cloud Gemini-TTS</p><p class="muted">ဖုန်းစွမ်းဆောင်ရည်အားလုံးကို အက်ပ်တစ်ခုက အလိုအလျောက် မရနိုင်ပါ။ Android version၊ OS permission နဲ့ native implementation အပေါ် မူတည်ပါတယ်။</p></div>`;
   view.querySelector('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
-    if (k && !k.startsWith('sk-or-')) { if (!confirm('Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return; }
+    const tk = view.querySelector<HTMLInputElement>('#ttsApiKey')!.value.trim();
+    const tv = view.querySelector<HTMLSelectElement>('#ttsVoice')!.value;
+    if (k && !k.startsWith('sk-or-')) { if (!confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return; }
     if (k) localStorage.setItem(KEY_NAME, k); else localStorage.removeItem(KEY_NAME);
     if (m) localStorage.setItem(MODEL_NAME, m); else localStorage.setItem(MODEL_NAME, DEFAULT_MODEL);
+    if (tk) localStorage.setItem(TTS_KEY_NAME, tk); else localStorage.removeItem(TTS_KEY_NAME);
+    localStorage.setItem(TTS_VOICE_NAME, tv);
     alert('Settings ကို သိမ်းပြီးပါပြီ။'); render();
   });
   view.querySelector('#showKey')!.addEventListener('click', () => {
     const i = view.querySelector<HTMLInputElement>('#apiKey')!;
     i.type = i.type === 'password' ? 'text' : 'password';
-    view.querySelector<HTMLButtonElement>('#showKey')!.textContent = i.type === 'password' ? 'Show API Key' : 'Hide API Key';
+    view.querySelector<HTMLButtonElement>('#showKey')!.textContent = i.type === 'password' ? 'Show OpenRouter Key' : 'Hide OpenRouter Key';
   });
   view.querySelector('#deleteKey')!.addEventListener('click', () => {
     if (!confirm('ဒီဖုန်းထဲက OpenRouter API Key ကို ဖျက်မှာ သေချာပါသလား?')) return;
-    localStorage.removeItem(KEY_NAME); view.querySelector<HTMLInputElement>('#apiKey')!.value = ''; alert('Key ဖျက်ပြီးပါပြီ။');
+    localStorage.removeItem(KEY_NAME); view.querySelector<HTMLInputElement>('#apiKey')!.value = ''; alert('OpenRouter Key ဖျက်ပြီးပါပြီ။');
+  });
+  view.querySelector('#deleteTtsKey')!.addEventListener('click', () => {
+    if (!confirm('ဒီဖုန်းထဲက Google Cloud TTS API Key ကို ဖျက်မှာ သေချာပါသလား?')) return;
+    localStorage.removeItem(TTS_KEY_NAME); view.querySelector<HTMLInputElement>('#ttsApiKey')!.value = ''; alert('TTS Key ဖျက်ပြီးပါပြီ။');
   });
 }
 render();
