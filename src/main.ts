@@ -1,5 +1,6 @@
 import './style.css';
 import { Geolocation } from '@capacitor/geolocation';
+import { VoiceRecorder } from 'capacitor-voice-recorder';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 const KEY_NAME = 'myk.openrouter.key';
@@ -169,10 +170,12 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     const button = view.querySelector<HTMLButtonElement>('#requestMic')!;
     button.disabled = true;
     try {
-      if (!navigator.mediaDevices?.getUserMedia) throw new Error('ဒီ WebView မှာ microphone API မရနိုင်ပါ။');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
-      status.textContent = 'Microphone permission ရရှိပါပြီ။ အသံ stream ကို ချက်ချင်းရပ်ထားသည်။';
+      const permission = await VoiceRecorder.requestAudioRecordingPermission();
+      if (!permission.value) throw new Error('Android က microphone permission ကို ခွင့်မပြုပါ။ ဖုန်း Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပြီး ထပ်စမ်းပါ။');
+      await VoiceRecorder.startRecording();
+      await new Promise(resolve => window.setTimeout(resolve, 500));
+      await VoiceRecorder.stopRecording();
+      status.textContent = 'Microphone permission ရရှိပြီး native recording test အောင်မြင်ပါပြီ။ စမ်းသပ်ပြီးချင်း အသံဖမ်းခြင်းကို ရပ်ထားသည်။';
     } catch (err) {
       status.textContent = `Microphone မရပါ: ${err instanceof Error ? err.message : 'permission denied'}`;
     } finally {
