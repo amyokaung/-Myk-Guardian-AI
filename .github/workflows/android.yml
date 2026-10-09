@@ -100,7 +100,7 @@ jobs:
               }
               @PluginMethod public void performAction(PluginCall call) {
                   String action = call.getString("action", "");
-                  if (!"back".equals(action) && !"backAgent".equals(action)) {
+                  if (!"back".equals(action) && !"backAgent".equals(action) && !"mediaNext".equals(action)) {
                       JSObject result = new JSObject();
                       result.put("success", false);
                       result.put("message", "Unsupported action: " + action);
@@ -116,23 +116,23 @@ jobs:
                       MykAccessibilityService service = MykAccessibilityService.instance;
                       if (service != null) {
                           try {
+                              if ("mediaNext".equals(action)) {
+                                  android.media.AudioManager audio = (android.media.AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+                                  if (audio == null) throw new IllegalStateException("Android AudioManager မရရှိပါ။");
+                                  long now = android.os.SystemClock.uptimeMillis();
+                                  audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_DOWN, android.view.KeyEvent.KEYCODE_MEDIA_NEXT, 0));
+                                  audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_UP, android.view.KeyEvent.KEYCODE_MEDIA_NEXT, 0));
+                                  JSObject result = new JSObject();
+                                  result.put("success", true);
+                                  result.put("message", "Media Next အမိန့်ကို Android ထံ ပို့ပြီးပါပြီ။ လက်ရှိ media app က လက်ခံမှသာ သီချင်းကျော်ပါမည်။");
+                                  call.resolve(result);
+                                  return;
+                              }
                               boolean ok = service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
                               JSObject result = new JSObject();
                               result.put("success", ok);
-                              result.put("message", ok ? ("backAgent".equals(action) ? "Android Back action dispatched; background fallback scheduled if Myk stays in front." : "Android Back action dispatched") : "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
+                              result.put("message", ok ? "Android Back action dispatched" : "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
                               call.resolve(result);
-                              if (ok && "backAgent".equals(action)) {
-                                  handler.postDelayed(() -> {
-                                      try {
-                                          // Always move Myk's own task behind after dispatching Back.
-                                          // Do not rely on window focus: the app may still report no focus
-                                          // during keyboard/transition states, which skipped the fallback.
-                                          if (getActivity() != null) {
-                                              getActivity().moveTaskToBack(true);
-                                          }
-                                      } catch (Exception ignored) { /* Keep the action result already returned to the UI. */ }
-                                  }, 450);
-                              }
                               return;
                           } catch (Exception e) {
                               JSObject result = new JSObject();
@@ -155,20 +155,40 @@ jobs:
                   handler.post(retry[0]);
               }
               @PluginMethod public void launchApp(PluginCall call) {
-                  String app = call.getString("app", "").toLowerCase(java.util.Locale.ROOT);
+                  String requested = call.getString("app", "").trim().toLowerCase(java.util.Locale.ROOT);
                   try {
-                      Intent intent = null;
-                      if ("youtube".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.google.android.youtube");
-                      else if ("facebook".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.facebook.katana");
-                      else if ("messenger".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.facebook.orca");
-                      else if ("chrome".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.android.chrome");
-                      else if ("settings".equals(app)) intent = new Intent(Settings.ACTION_SETTINGS);
-                      if (intent == null) {
-                          JSObject result = new JSObject(); result.put("success", false); result.put("message", "ဒီ App ကို ဖုန်းထဲမှာ မတွေ့ပါ။"); call.resolve(result); return;
+                      if (requested.isEmpty()) {
+                          JSObject result = new JSObject(); result.put("success", false); result.put("message", "ဖွင့်လိုသော App အမည် မပါပါ။"); call.resolve(result); return;
                       }
+                      if ("settings".equals(requested) || "ဆက်တင်".equals(requested)) {
+                          Intent settings = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                          getContext().startActivity(settings);
+                          JSObject result = new JSObject(); result.put("success", true); result.put("message", "Android Settings ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result); return;
+                      }
+                      android.content.pm.PackageManager pm = getContext().getPackageManager();
+                      Intent launcher = new Intent(Intent.ACTION_MAIN, null);
+                      launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+                      java.util.List<android.content.pm.ResolveInfo> apps = pm.queryIntentActivities(launcher, 0);
+                      android.content.pm.ResolveInfo best = null;
+                      int bestScore = -1;
+                      for (android.content.pm.ResolveInfo info : apps) {
+                          String label = info.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT);
+                          String pkg = info.activityInfo.packageName.toLowerCase(java.util.Locale.ROOT);
+                          int score = -1;
+                          if (label.equals(requested)) score = 100;
+                          else if (label.contains(requested) || requested.contains(label)) score = 50;
+                          else if (pkg.contains(requested.replace(" ", ""))) score = 25;
+                          if (score > bestScore) { bestScore = score; best = info; }
+                      }
+                      if (best == null || bestScore < 0) {
+                          JSObject result = new JSObject(); result.put("success", false); result.put("message", "ဖုန်းထဲက ဖွင့်နိုင်သော App များထဲတွင် '" + requested + "' ကို မတွေ့ပါ။ App အမည်ကို ပြန်စစ်ပါ။"); call.resolve(result); return;
+                      }
+                      Intent intent = new Intent(Intent.ACTION_MAIN);
+                      intent.addCategory(Intent.CATEGORY_LAUNCHER);
+                      intent.setClassName(best.activityInfo.packageName, best.activityInfo.name);
                       intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                       getContext().startActivity(intent);
-                      JSObject result = new JSObject(); result.put("success", true); result.put("message", "App ဖွင့်လိုက်ပါပြီ။"); call.resolve(result);
+                      JSObject result = new JSObject(); result.put("success", true); result.put("message", best.loadLabel(pm).toString() + " ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result);
                   } catch (Exception e) { call.reject("App ဖွင့်မရပါ: " + e.getMessage(), e); }
               }
           }
