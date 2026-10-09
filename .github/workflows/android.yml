@@ -142,6 +142,23 @@ jobs:
                   };
                   handler.post(retry[0]);
               }
+              @PluginMethod public void launchApp(PluginCall call) {
+                  String app = call.getString("app", "").toLowerCase(java.util.Locale.ROOT);
+                  try {
+                      Intent intent = null;
+                      if ("youtube".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.google.android.youtube");
+                      else if ("facebook".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.facebook.katana");
+                      else if ("messenger".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.facebook.orca");
+                      else if ("chrome".equals(app)) intent = getContext().getPackageManager().getLaunchIntentForPackage("com.android.chrome");
+                      else if ("settings".equals(app)) intent = new Intent(Settings.ACTION_SETTINGS);
+                      if (intent == null) {
+                          JSObject result = new JSObject(); result.put("success", false); result.put("message", "ဒီ App ကို ဖုန်းထဲမှာ မတွေ့ပါ။"); call.resolve(result); return;
+                      }
+                      intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                      getContext().startActivity(intent);
+                      JSObject result = new JSObject(); result.put("success", true); result.put("message", "App ဖွင့်လိုက်ပါပြီ။"); call.resolve(result);
+                  } catch (Exception e) { call.reject("App ဖွင့်မရပါ: " + e.getMessage(), e); }
+              }
           }
           """)
           (java_dir / "MykAccessibilityService.java").write_text("""package com.myk.guardianai;
