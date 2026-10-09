@@ -5,7 +5,7 @@ import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean }> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
