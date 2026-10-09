@@ -40,6 +40,16 @@ jobs:
           from pathlib import Path
           p = Path("android/app/src/main/AndroidManifest.xml")
           s = p.read_text()
+          # Android 11+ hides installed launcher apps unless package visibility is declared.
+          queries = '''    <queries>
+                  <intent>
+                      <action android:name="android.intent.action.MAIN" />
+                      <category android:name="android.intent.category.LAUNCHER" />
+                  </intent>
+              </queries>
+          '''
+          if "<queries>" not in s:
+              s = s.replace("<application", queries + "    <application", 1)
           permissions = [
               '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
               '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
