@@ -66,7 +66,7 @@ function renderChat(view: HTMLElement) {
     <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
     <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'MYK AI'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
     <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
-    <p class="hint">AI က ဖုန်းအလုပ်တွေကို ကိုယ်တိုင်မလုပ်နိုင်သေးပါ။ ခွင့်ပြုထားပြီး ပံ့ပိုးထားတဲ့ Action များကိုသာ အတည်ပြုချက်နဲ့ လုပ်ဆောင်မယ်။</p>`;
+    <p class="hint">App ဖွင့်ခြင်း၊ လက်ရှိသီချင်းကျော်ခြင်းနှင့် Back Action တို့ကို ပံ့ပိုးထားသလို လုပ်ဆောင်မည်။ Android ခွင့်ပြုချက်နှင့် လက်ရှိ App ပံ့ပိုးမှုအပေါ် မူတည်နိုင်သည်။</p>`;
   view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
     const input = view.querySelector<HTMLTextAreaElement>('#prompt')!;
@@ -246,7 +246,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
         alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > Myk Guardian AI ကို On လုပ်ပါ။');
         return;
       }
-      const result = await MykNative.performAction({ action: 'backAgent' });
+      const result = await MykNative.performAction({ action: 'back' });
       // Do not open a blocking alert immediately: it can block the native
       // delayed fallback on Android's main thread.
       window.setTimeout(() => {
