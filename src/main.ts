@@ -3,7 +3,6 @@ import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
-import { tryNativeCommand } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
@@ -89,16 +88,6 @@ function renderChat(view: HTMLElement) {
     const text = input.value.trim();
     if (!text || busy) return;
     messages.push({ role: 'user', content: text }); busy = true; render();
-    try {
-      const actionResult = await tryNativeCommand(text);
-      if (actionResult) {
-        messages.push({ role: 'assistant', content: actionResult });
-        busy = false; render(); return;
-      }
-    } catch (err) {
-      messages.push({ role: 'assistant', content: 'လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။') });
-      busy = false; render(); return;
-    }
     await askAI();
   });
 }
