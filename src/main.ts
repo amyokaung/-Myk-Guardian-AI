@@ -3,7 +3,7 @@ import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
-import { tryNativeCommand } from './native-actions';
+import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
@@ -19,7 +19,7 @@ const readPerms = (): Record<string, boolean> => {
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let messages: Message[] = [
-  { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ မင်းခွင့်ပြုထားတဲ့ လုပ်ဆောင်ချက်တွေအတွင်းမှာ ကူညီပေးမယ်။ အရင်ဆုံး Settings မှာ OpenRouter API Key ထည့်ပါ။' }
+  { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
 let busy = false;
@@ -102,33 +102,59 @@ function renderChat(view: HTMLElement) {
     await askAI();
   });
 }
+const PROVIDER_NAME = 'myk.ai.provider';
+const GEMINI_KEY_NAME = 'myk.gemini.key';
+const GEMINI_MODEL_NAME = 'myk.gemini.model';
+const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings'] }, app: { type: 'string', description: 'App name, required only for open_app.' } }, required: ['action'], additionalProperties: false } } }];
+const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings'] }, app: { type: 'STRING', description: 'App name, required only for open_app.' } }, required: ['action'] } }] }];
+
 async function askAI() {
-  const key = localStorage.getItem(KEY_NAME)?.trim();
-  if (!key) {
-    messages.push({ role: 'assistant', content: 'OpenRouter API Key မထည့်ရသေးပါ။ ဆက်တင် (Settings) ကိုဖွင့်ပြီး Key ထည့်ပါ။' });
-    busy = false; render(); return;
-  }
-  const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
+  const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
+  const history = messages.slice(-20);
+  const systemPrompt = 'You are Myk Guardian AI, a careful Burmese-first Android personal assistant. Understand natural Burmese and English commands. If the user requests a phone action that matches an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: 'You are Myk Guardian AI, a careful Burmese-first Android personal assistant. Answer directly and clearly, preferably in Burmese when the user writes Burmese. You cannot directly control the phone unless a supported native action is explicitly provided by the app. Never claim an action was completed unless the app reports success. For sensitive actions, ask the user to confirm.' },
-          ...messages.slice(-20).map(m => ({ role: m.role, content: m.content }))
-        ],
-        temperature: 0.6,
-        max_tokens: 1200
-      })
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
-    const answer = data?.choices?.[0]?.message?.content;
-    messages.push({ role: 'assistant', content: typeof answer === 'string' && answer.trim() ? answer.trim() : 'Model က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ အခြား Model ကိုရွေးပြီး ထပ်စမ်းပါ။' });
+    let answer = '';
+    if (provider === 'gemini') {
+      const key = localStorage.getItem(GEMINI_KEY_NAME)?.trim();
+      if (!key) throw new Error('Gemini API Key မထည့်ရသေးပါ။ Settings မှာ Gemini ကိုရွေးပြီး Key ထည့်ပါ။');
+      const model = localStorage.getItem(GEMINI_MODEL_NAME) || 'gemini-2.5-flash';
+      const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
+      const contents = history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, tools: GEMINI_TOOLS, generationConfig: { temperature: 0.4, maxOutputTokens: 900 } }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || 'Gemini HTTP ' + response.status);
+      const parts = data?.candidates?.[0]?.content?.parts || [];
+      const call = parts.find((p: any) => p.functionCall?.name === 'phone_action')?.functionCall;
+      if (call) {
+        const result = await executeAgentAction(String(call.args?.action || ''), call.args || {});
+        const follow = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents: [...contents, { role: 'model', parts: [{ functionCall: { name: 'phone_action', args: call.args } }] }, { role: 'user', parts: [{ functionResponse: { name: 'phone_action', response: { result } } }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 500 } }) });
+        const followData = await follow.json();
+        if (!follow.ok) throw new Error(followData?.error?.message || 'Gemini action result error');
+        answer = followData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('').trim() || result;
+      } else answer = parts.map((p: any) => p.text || '').join('').trim();
+    } else {
+      const key = localStorage.getItem(KEY_NAME)?.trim();
+      if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
+      const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
+      const message = data?.choices?.[0]?.message;
+      const call = message?.tool_calls?.find((t: any) => t.function?.name === 'phone_action');
+      if (call) {
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(call.function.arguments || '{}'); } catch { throw new Error('AI action argument မမှန်ပါ။'); }
+        const result = await executeAgentAction(String(args.action || ''), args);
+        const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
+        const followData = await follow.json();
+        if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
+        answer = followData?.choices?.[0]?.message?.content?.trim() || result;
+      } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
+    }
+    messages.push({ role: 'assistant', content: answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။' });
   } catch (err) {
-    messages.push({ role: 'assistant', content: `OpenRouter ချိတ်ဆက်မှု မအောင်မြင်ပါ။ ${err instanceof Error ? err.message : 'Unknown error'}\nAPI Key၊ Model ID နဲ့ အင်တာနက်ကို စစ်ဆေးပါ။` });
+    messages.push({ role: 'assistant', content: 'AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '
+Settings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။' });
   }
   busy = false; render();
 }
@@ -272,27 +298,47 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
 function renderSettings(view: HTMLElement) {
   const key = localStorage.getItem(KEY_NAME) || '';
   const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">LOCAL CONFIG</span></div>
-    <div class="card settings-card"><label for="apiKey">OpenRouter API Key</label><input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}"><small>Key ကို source code ထဲ မထည့်ပါနဲ့။ ဒီ starter မှာ browser localStorage ထဲ သိမ်းထားတာဖြစ်လို့ public release အတွက် encrypted native storage သို့မဟုတ် backend proxy ထပ်တည်ဆောက်ဖို့လိုပါတယ်။</small>
-    <label for="modelId">Model ID</label><input id="modelId" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><small>Model ID ကို OpenRouter model catalog မှာ စစ်ပြီး ထည့်ပါ။ Model အားလုံး အခမဲ့မဟုတ်ပါ။</small>
-    <button class="primary wide" id="saveSettings">Save settings</button><button class="secondary wide" id="showKey">${key?'Show OpenRouter Key':'OpenRouter Key မထည့်ရသေးပါ'}</button><button class="danger wide" id="deleteKey">OpenRouter Key ဖျက်မယ်</button></div>
-    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · OpenRouter API · Android native permissions</p><p class="muted">အသံဖြင့် စာရိုက်သွင်းမှုကို ပံ့ပိုးထားသည်။ Android ခွင့်ပြုချက်များကို ဖုန်း၏ Settings မှာ ကိုယ်တိုင်ထိန်းချုပ်နိုင်သည်။</p></div>`;
-  view.querySelector('#saveSettings')!.addEventListener('click', () => {
+  const geminiKey = localStorage.getItem(GEMINI_KEY_NAME) || '';
+  const geminiModel = localStorage.getItem(GEMINI_MODEL_NAME) || 'gemini-2.5-flash';
+  const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">AI + PHONE ACTIONS</span></div>
+    <div class="card settings-card">
+      <label for="provider">AI Provider</label><select id="provider"><option value="openrouter" ${provider==='openrouter'?'selected':''}>OpenRouter (GPT နှင့် အခြား Models)</option><option value="gemini" ${provider==='gemini'?'selected':''}>Google Gemini API</option></select>
+      <p class="muted">Provider တစ်ခုရွေးပြီး သက်ဆိုင်ရာ API Key ထည့်ပါ။ API Key ကို ဒီဖုန်းရဲ့ localStorage ထဲမှာ သိမ်းပါတယ်။</p>
+      <label for="apiKey">OpenRouter API Key</label><input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}">
+      <label for="modelId">OpenRouter Model ID</label><input id="modelId" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><small>ဥပမာ openai/gpt-4o-mini — OpenRouter မှာ ရရှိနိုင်မှုနဲ့ ကုန်ကျစရိတ်ကို စစ်ပါ။</small>
+      <hr>
+      <label for="geminiKey">Gemini API Key</label><input id="geminiKey" type="password" autocomplete="off" placeholder="Gemini API Key" value="${esc(geminiKey)}">
+      <label for="geminiModel">Gemini Model ID</label><input id="geminiModel" value="${esc(geminiModel)}" placeholder="gemini-2.5-flash">
+      <button class="primary wide" id="saveSettings">Settings သိမ်းမယ်</button>
+      <button class="secondary wide" id="showKey">OpenRouter Key ပြ/ဖျောက်</button>
+      <button class="secondary wide" id="showGeminiKey">Gemini Key ပြ/ဖျောက်</button>
+      <button class="danger wide" id="deleteKeys">API Key နှစ်ခုလုံး ဖျက်မယ်</button>
+    </div>
+    <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
+    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
+  view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
-    if (k && !k.startsWith('sk-or-')) { if (!confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return; }
+    const gk = view.querySelector<HTMLInputElement>('#geminiKey')!.value.trim();
+    const gm = view.querySelector<HTMLInputElement>('#geminiModel')!.value.trim();
+    const p = view.querySelector<HTMLSelectElement>('#provider')!.value;
+    if (k && !k.startsWith('sk-or-') && !confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return;
     if (k) localStorage.setItem(KEY_NAME, k); else localStorage.removeItem(KEY_NAME);
     if (m) localStorage.setItem(MODEL_NAME, m); else localStorage.setItem(MODEL_NAME, DEFAULT_MODEL);
-    alert('Settings ကို သိမ်းပြီးပါပြီ။'); render();
+    if (gk) localStorage.setItem(GEMINI_KEY_NAME, gk); else localStorage.removeItem(GEMINI_KEY_NAME);
+    if (gm) localStorage.setItem(GEMINI_MODEL_NAME, gm); else localStorage.setItem(GEMINI_MODEL_NAME, 'gemini-2.5-flash');
+    localStorage.setItem(PROVIDER_NAME, p);
+    alert('Settings သိမ်းပြီးပါပြီ။ လက်ရှိ Provider: ' + (p === 'gemini' ? 'Gemini' : 'OpenRouter')); render();
   });
-  view.querySelector('#showKey')!.addEventListener('click', () => {
-    const i = view.querySelector<HTMLInputElement>('#apiKey')!;
-    i.type = i.type === 'password' ? 'text' : 'password';
-    view.querySelector<HTMLButtonElement>('#showKey')!.textContent = i.type === 'password' ? 'Show OpenRouter Key' : 'Hide OpenRouter Key';
-  });
-  view.querySelector('#deleteKey')!.addEventListener('click', () => {
-    if (!confirm('ဒီဖုန်းထဲက OpenRouter API Key ကို ဖျက်မှာ သေချာပါသလား?')) return;
-    localStorage.removeItem(KEY_NAME); view.querySelector<HTMLInputElement>('#apiKey')!.value = ''; alert('OpenRouter Key ဖျက်ပြီးပါပြီ။');
+  view.querySelector<HTMLButtonElement>('#showKey')!.addEventListener('click', () => { const i = view.querySelector<HTMLInputElement>('#apiKey')!; i.type = i.type === 'password' ? 'text' : 'password'; });
+  view.querySelector<HTMLButtonElement>('#showGeminiKey')!.addEventListener('click', () => { const i = view.querySelector<HTMLInputElement>('#geminiKey')!; i.type = i.type === 'password' ? 'text' : 'password'; });
+  view.querySelector<HTMLButtonElement>('#deleteKeys')!.addEventListener('click', () => {
+    if (!confirm('ဒီဖုန်းထဲက API Key နှစ်ခုလုံးကို ဖျက်မှာ သေချာပါသလား?')) return;
+    localStorage.removeItem(KEY_NAME); localStorage.removeItem(GEMINI_KEY_NAME);
+    view.querySelector<HTMLInputElement>('#apiKey')!.value = ''; view.querySelector<HTMLInputElement>('#geminiKey')!.value = '';
+    alert('API Key နှစ်ခုလုံး ဖျက်ပြီးပါပြီ။');
   });
 }
+
 render();
