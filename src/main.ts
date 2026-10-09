@@ -230,7 +230,11 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       const status = await MykNative.getStatus();
       if (!status.accessibilityEnabled) { alert('အရင် Accessibility Service ကို Android Settings မှ Enable လုပ်ပါ။'); return; }
       const result = await MykNative.performAction({ action: 'back' });
-      if (!result.success) alert('Android က Back action ကို မလုပ်နိုင်ခဲ့ပါ။');
+      if (!result.success) {
+        alert('Back Action မအောင်မြင်ပါ။\\n\\nအကြောင်းရင်း: ' + (result.message || 'Android က Back action ကို မလုပ်နိုင်ခဲ့ပါ။'));
+      } else {
+        alert('Back Action ကို Android ထံ ပို့ပြီးပါပြီ။');
+      }
     } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
