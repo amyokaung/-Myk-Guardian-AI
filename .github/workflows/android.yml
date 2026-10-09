@@ -124,6 +124,27 @@ jobs:
                   final Runnable[] retry = new Runnable[1];
                   retry[0] = () -> {
                       MykAccessibilityService service = MykAccessibilityService.instance;
+                      if (service == null && ("openSettings".equals(action) || "volumeUp".equals(action) || "volumeDown".equals(action) || "mediaNext".equals(action) || "mediaPrevious".equals(action) || "mediaPlayPause".equals(action))) {
+                          try {
+                              if ("openSettings".equals(action)) {
+                                  getContext().startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                                  JSObject result = new JSObject(); result.put("success", true); result.put("message", "Android Settings ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result); return;
+                              }
+                              android.media.AudioManager audio = (android.media.AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+                              if (audio == null) throw new IllegalStateException("Android AudioManager မရရှိပါ။");
+                              if ("volumeUp".equals(action) || "volumeDown".equals(action)) {
+                                  audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, "volumeUp".equals(action) ? android.media.AudioManager.ADJUST_RAISE : android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI);
+                                  JSObject result = new JSObject(); result.put("success", true); result.put("message", "Media volume command ကို Android ထံ ပို့ပြီးပါပြီ။"); call.resolve(result); return;
+                              }
+                              long now = android.os.SystemClock.uptimeMillis();
+                              int keyCode = "mediaNext".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT : ("mediaPrevious".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS : android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+                              audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_DOWN, keyCode, 0));
+                              audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_UP, keyCode, 0));
+                              JSObject result = new JSObject(); result.put("success", true); result.put("message", "Media command ကို Android ထံ ပို့ပြီးပါပြီ။ လက်ရှိ media app က လက်ခံမှသာ လုပ်ဆောင်ပါမည်။"); call.resolve(result); return;
+                          } catch (Exception e) {
+                              JSObject result = new JSObject(); result.put("success", false); result.put("message", "Android action error: " + e.getMessage()); call.resolve(result); return;
+                          }
+                      }
                       if (service != null) {
                           try {
                               if ("openSettings".equals(action)) {
