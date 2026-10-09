@@ -100,7 +100,7 @@ jobs:
               }
               @PluginMethod public void performAction(PluginCall call) {
                   String action = call.getString("action", "");
-                  if (!"back".equals(action)) {
+                  if (!"back".equals(action) && !"backAgent".equals(action)) {
                       JSObject result = new JSObject();
                       result.put("success", false);
                       result.put("message", "Unsupported action: " + action);
@@ -119,8 +119,17 @@ jobs:
                               boolean ok = service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
                               JSObject result = new JSObject();
                               result.put("success", ok);
-                              result.put("message", ok ? "Back action dispatched" : "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
+                              result.put("message", ok ? ("backAgent".equals(action) ? "Android Back action dispatched; background fallback scheduled if Myk stays in front." : "Android Back action dispatched") : "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
                               call.resolve(result);
+                              if (ok && "backAgent".equals(action)) {
+                                  handler.postDelayed(() -> {
+                                      try {
+                                          if (getActivity() != null && getActivity().hasWindowFocus()) {
+                                              getActivity().moveTaskToBack(true);
+                                          }
+                                      } catch (Exception ignored) { /* Keep the action result already returned to the UI. */ }
+                                  }, 450);
+                              }
                               return;
                           } catch (Exception e) {
                               JSObject result = new JSObject();
