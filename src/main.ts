@@ -49,9 +49,7 @@ function render() {
     </main>
     <footer><span>MYK GUARDIAN AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
   app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => {
-    const nextTab = b.dataset.tab!;
-    if (nextTab !== activeTab) window.history.replaceState({ mykPreviousTab: activeTab }, '');
-    activeTab = nextTab;
+    activeTab = b.dataset.tab!;
     render();
   }));
   document.querySelector('#settingsShortcut')?.addEventListener('click', () => { activeTab = 'settings'; render(); });
@@ -237,18 +235,10 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       const result = await MykNative.performAction({ action: 'back' });
       if (!result.success) {
         alert('Back Action မအောင်မြင်ပါ။\\n\\nအကြောင်းရင်း: ' + (result.message || 'Android က Back action ကို မလုပ်နိုင်ခဲ့ပါ။'));
-      } else {
-        // Accessibility global back may be accepted by Android without navigating
-        // within this single-page app. Fall back to the app's own tab history.
-        const previousTab = window.history.state?.mykPreviousTab as string | undefined;
-        if (previousTab && ['chat', 'agent', 'permissions', 'settings'].includes(previousTab)) {
-          activeTab = previousTab;
-          render();
-        } else if (activeTab !== 'chat') {
-          activeTab = 'chat';
-          render();
-        }
       }
+      // On success, do not render another Myk tab or show a success dialog.
+      // Android's AccessibilityService GLOBAL_ACTION_BACK must control navigation.
+  
     } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
