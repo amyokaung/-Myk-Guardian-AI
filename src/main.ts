@@ -246,15 +246,19 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
         alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > Myk Guardian AI ကို On လုပ်ပါ။');
         return;
       }
-      const result = await MykNative.performAction({ action: 'back' });
-      alert(
-        'Back Action စစ်ဆေးချက်\\n\\n' +
-        'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
-        'Notification Access: ' + status.notificationEnabled + '\\n' +
-        'Native Back Result: ' + result.success + '\\n' +
-        'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
-        'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
-      );
+      const result = await MykNative.performAction({ action: 'backAgent' });
+      // Do not open a blocking alert immediately: it can block the native
+      // delayed fallback on Android's main thread.
+      window.setTimeout(() => {
+        alert(
+          'Back Action စစ်ဆေးချက်\\n\\n' +
+          'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
+          'Notification Access: ' + status.notificationEnabled + '\\n' +
+          'Native Back Result: ' + result.success + '\\n' +
+          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
+          'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
+        );
+      }, 800);
   
     } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
