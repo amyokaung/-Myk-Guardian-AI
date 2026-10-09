@@ -124,7 +124,10 @@ jobs:
                               if (ok && "backAgent".equals(action)) {
                                   handler.postDelayed(() -> {
                                       try {
-                                          if (getActivity() != null && getActivity().hasWindowFocus()) {
+                                          // Always move Myk's own task behind after dispatching Back.
+                                          // Do not rely on window focus: the app may still report no focus
+                                          // during keyboard/transition states, which skipped the fallback.
+                                          if (getActivity() != null) {
                                               getActivity().moveTaskToBack(true);
                                           }
                                       } catch (Exception ignored) { /* Keep the action result already returned to the UI. */ }
