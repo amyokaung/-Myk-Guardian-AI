@@ -232,9 +232,9 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       const result = await MykNative.performAction({ action: 'back' });
       if (!result.success) {
         alert('Back Action မအောင်မြင်ပါ။\\n\\nအကြောင်းရင်း: ' + (result.message || 'Android က Back action ကို မလုပ်နိုင်ခဲ့ပါ။'));
-      } else {
-        alert('Back Action ကို Android ထံ ပို့ပြီးပါပြီ။');
       }
+      // Do not show a success alert here: the modal JavaScript alert can keep
+      // the WebView in front and make a successful Android Back action appear ineffective.
     } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
