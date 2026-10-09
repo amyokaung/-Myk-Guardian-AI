@@ -117,9 +117,32 @@ jobs:
                       if (service != null) {
                           try {
                               boolean ok = service.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+                              if (!ok) {
+                                  JSObject result = new JSObject();
+                                  result.put("success", false);
+                                  result.put("message", "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
+                                  call.resolve(result);
+                                  return;
+                              }
+                              // Some WebView/Android combinations report that the global action
+                              // was accepted but leave this single-activity app on screen.
+                              // Give the OS back action time to run; if Myk still owns window
+                              // focus, finish this Activity so Back actually leaves Myk.
+                              handler.postDelayed(() -> {
+                                  try {
+                                      android.app.Activity activity = getActivity();
+                                      if (activity != null && !activity.isFinishing() && activity.hasWindowFocus()) {
+                                          activity.runOnUiThread(() -> {
+                                              if (!activity.isFinishing() && activity.hasWindowFocus()) {
+                                                  activity.finish();
+                                              }
+                                          });
+                                      }
+                                  } catch (Exception ignored) {}
+                              }, 350);
                               JSObject result = new JSObject();
-                              result.put("success", ok);
-                              result.put("message", ok ? "Back action dispatched" : "Android AccessibilityService rejected GLOBAL_ACTION_BACK");
+                              result.put("success", true);
+                              result.put("message", "Android Back dispatched; Activity fallback scheduled");
                               call.resolve(result);
                               return;
                           } catch (Exception e) {
