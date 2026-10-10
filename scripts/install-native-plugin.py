@@ -1,0 +1,237 @@
+from pathlib import Path
+p = Path("android/app/src/main/AndroidManifest.xml")
+s = p.read_text()
+# Android 11+ hides installed launcher apps unless package visibility is declared.
+queries = '''    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+'''
+if "<queries>" not in s:
+    s = s.replace("<application", queries + "    <application", 1)
+permissions = [
+    '    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
+    '    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
+    '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+]
+for permission in permissions:
+    name = permission.split('name="')[1].split('"')[0]
+    if name not in s:
+        s = s.replace('<application', permission + chr(10) + '    <application', 1)
+# Add a real Android AccessibilityService and NotificationListenerService.
+import re
+app_dir = Path("android/app/src/main")
+java_dir = app_dir / "java/com/myk/guardianai"
+java_dir.mkdir(parents=True, exist_ok=True)
+xml_dir = app_dir / "res/xml"
+xml_dir.mkdir(parents=True, exist_ok=True)
+
+main_activity = java_dir / "MainActivity.java"
+main_activity.write_text(
+    "package com.myk.guardianai;" + chr(10) +
+    "import android.os.Bundle;" + chr(10) +
+    "import com.getcapacitor.BridgeActivity;" + chr(10) +
+    "import com.myk.guardianai.MykAccessibilityPlugin;" + chr(10) +
+    "public class MainActivity extends BridgeActivity {" + chr(10) +
+    "    @Override public void onCreate(Bundle savedInstanceState) {" + chr(10) +
+    "        registerPlugin(MykAccessibilityPlugin.class);" + chr(10) +
+    "        super.onCreate(savedInstanceState);" + chr(10) +
+    "    }" + chr(10) + "}" + chr(10)
+)
+(java_dir / "MykAccessibilityPlugin.java").write_text("""package com.myk.guardianai;
+import android.content.ComponentName;
+import android.content.Intent;
+import android.provider.Settings;
+import android.text.TextUtils;
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+@CapacitorPlugin(name = "MykAccessibility")
+public class MykAccessibilityPlugin extends Plugin {
+    @PluginMethod public void getStatus(PluginCall call) {
+        JSObject result = new JSObject();
+        String enabled = Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        String service = new ComponentName(getContext(), MykAccessibilityService.class).flattenToString();
+        result.put("accessibilityEnabled", enabled != null && (enabled.contains(service) || enabled.contains(getContext().getPackageName() + "/.MykAccessibilityService")));
+        String listeners = Settings.Secure.getString(getContext().getContentResolver(), "enabled_notification_listeners");
+        result.put("notificationEnabled", listeners != null && listeners.contains(getContext().getPackageName()));
+        call.resolve(result);
+    }
+    @PluginMethod public void openAccessibilitySettings(PluginCall call) {
+        try { getContext().startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(); }
+        catch (Exception e) { call.reject("Cannot open Accessibility Settings", e); }
+    }
+    @PluginMethod public void openNotificationSettings(PluginCall call) {
+        try { getContext().startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); call.resolve(); }
+        catch (Exception e) { call.reject("Cannot open Notification Access Settings", e); }
+    }
+    @PluginMethod public void performAction(PluginCall call) {
+        String action = call.getString("action", "");
+        if (!java.util.Arrays.asList("back", "backAgent", "home", "mediaNext", "mediaPrevious", "mediaPlayPause", "volumeUp", "volumeDown", "openSettings").contains(action)) {
+            JSObject result = new JSObject();
+            result.put("success", false);
+            result.put("message", "Unsupported action: " + action);
+            call.resolve(result);
+            return;
+        }
+        // The user may have just enabled Accessibility. Android can take a
+        // moment to reconnect the service, so retry briefly on the main thread.
+        final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+        final int[] attempts = {0};
+        final Runnable[] retry = new Runnable[1];
+        retry[0] = () -> {
+            MykAccessibilityService service = MykAccessibilityService.instance;
+            if (service == null && ("openSettings".equals(action) || "volumeUp".equals(action) || "volumeDown".equals(action) || "mediaNext".equals(action) || "mediaPrevious".equals(action) || "mediaPlayPause".equals(action))) {
+                try {
+                    if ("openSettings".equals(action)) {
+                        getContext().startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                        JSObject result = new JSObject(); result.put("success", true); result.put("message", "Android Settings ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result); return;
+                    }
+                    android.media.AudioManager audio = (android.media.AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+                    if (audio == null) throw new IllegalStateException("Android AudioManager မရရှိပါ။");
+                    if ("volumeUp".equals(action) || "volumeDown".equals(action)) {
+                        audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, "volumeUp".equals(action) ? android.media.AudioManager.ADJUST_RAISE : android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI);
+                        JSObject result = new JSObject(); result.put("success", true); result.put("message", "Media volume command ကို Android ထံ ပို့ပြီးပါပြီ။"); call.resolve(result); return;
+                    }
+                    long now = android.os.SystemClock.uptimeMillis();
+                    int keyCode = "mediaNext".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT : ("mediaPrevious".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS : android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+                    audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_DOWN, keyCode, 0));
+                    audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_UP, keyCode, 0));
+                    JSObject result = new JSObject(); result.put("success", true); result.put("message", "Media command ကို Android ထံ ပို့ပြီးပါပြီ။ လက်ရှိ media app က လက်ခံမှသာ လုပ်ဆောင်ပါမည်။"); call.resolve(result); return;
+                } catch (Exception e) {
+                    JSObject result = new JSObject(); result.put("success", false); result.put("message", "Android action error: " + e.getMessage()); call.resolve(result); return;
+                }
+            }
+            if (service != null) {
+                try {
+                    if ("openSettings".equals(action)) {
+                        getContext().startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                        JSObject result = new JSObject(); result.put("success", true); result.put("message", "Android Settings ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result); return;
+                    }
+                    if ("volumeUp".equals(action) || "volumeDown".equals(action)) {
+                        android.media.AudioManager audio = (android.media.AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+                        if (audio == null) throw new IllegalStateException("Android AudioManager မရရှိပါ။");
+                        audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, "volumeUp".equals(action) ? android.media.AudioManager.ADJUST_RAISE : android.media.AudioManager.ADJUST_LOWER, android.media.AudioManager.FLAG_SHOW_UI);
+                        JSObject result = new JSObject(); result.put("success", true); result.put("message", "Media volume command ကို Android ထံ ပို့ပြီးပါပြီ။"); call.resolve(result); return;
+                    }
+                    if ("mediaNext".equals(action) || "mediaPrevious".equals(action) || "mediaPlayPause".equals(action)) {
+                        android.media.AudioManager audio = (android.media.AudioManager) getContext().getSystemService(android.content.Context.AUDIO_SERVICE);
+                        if (audio == null) throw new IllegalStateException("Android AudioManager မရရှိပါ။");
+                        long now = android.os.SystemClock.uptimeMillis();
+                        audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_DOWN, ("mediaNext".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT : ("mediaPrevious".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS : android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)), 0));
+                        audio.dispatchMediaKeyEvent(new android.view.KeyEvent(now, now, android.view.KeyEvent.ACTION_UP, ("mediaNext".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_NEXT : ("mediaPrevious".equals(action) ? android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS : android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)), 0));
+                        JSObject result = new JSObject();
+                        result.put("success", true);
+                        result.put("message", "Media command ကို Android ထံ ပို့ပြီးပါပြီ။ လက်ရှိ media app က လက်ခံမှသာ လုပ်ဆောင်ပါမည်။");
+                        call.resolve(result);
+                        return;
+                    }
+                    boolean ok = service.performGlobalAction("home".equals(action) ? android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_HOME : android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK);
+                    JSObject result = new JSObject();
+                    result.put("success", ok);
+                    result.put("message", ok ? ("home".equals(action) ? "Android Home action dispatched" : "Android Back action dispatched") : "Android AccessibilityService rejected global action");
+                    call.resolve(result);
+                    return;
+                } catch (Exception e) {
+                    JSObject result = new JSObject();
+                    result.put("success", false);
+                    result.put("message", "Back action error: " + e.getMessage());
+                    call.resolve(result);
+                    return;
+                }
+            }
+            attempts[0]++;
+            if (attempts[0] < 10) {
+                handler.postDelayed(retry[0], 200);
+            } else {
+                JSObject result = new JSObject();
+                result.put("success", false);
+                result.put("message", "Accessibility is enabled in Settings, but the native service is not connected yet. Turn the service off/on, then retry.");
+                call.resolve(result);
+            }
+        };
+        handler.post(retry[0]);
+    }
+    @PluginMethod public void launchApp(PluginCall call) {
+        String requested = call.getString("app", "").trim().toLowerCase(java.util.Locale.ROOT);
+        try {
+            if (requested.isEmpty()) {
+                JSObject result = new JSObject(); result.put("success", false); result.put("message", "ဖွင့်လိုသော App အမည် မပါပါ။"); call.resolve(result); return;
+            }
+            if ("settings".equals(requested) || "ဆက်တင်".equals(requested)) {
+                Intent settings = new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(settings);
+                JSObject result = new JSObject(); result.put("success", true); result.put("message", "Android Settings ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result); return;
+            }
+            android.content.pm.PackageManager pm = getContext().getPackageManager();
+            Intent launcher = new Intent(Intent.ACTION_MAIN, null);
+            launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+            java.util.List<android.content.pm.ResolveInfo> apps = pm.queryIntentActivities(launcher, 0);
+            android.content.pm.ResolveInfo best = null;
+            int bestScore = -1;
+            for (android.content.pm.ResolveInfo info : apps) {
+                String label = info.loadLabel(pm).toString().toLowerCase(java.util.Locale.ROOT);
+                String pkg = info.activityInfo.packageName.toLowerCase(java.util.Locale.ROOT);
+                int score = -1;
+                if (label.equals(requested)) score = 100;
+                else if (label.contains(requested) || requested.contains(label)) score = 50;
+                else if (pkg.contains(requested.replace(" ", ""))) score = 25;
+                if (score > bestScore) { bestScore = score; best = info; }
+            }
+            if (best == null || bestScore < 0) {
+                JSObject result = new JSObject(); result.put("success", false); result.put("message", "ဖုန်းထဲက ဖွင့်နိုင်သော App များထဲတွင် '" + requested + "' ကို မတွေ့ပါ။ App အမည်ကို ပြန်စစ်ပါ။"); call.resolve(result); return;
+            }
+            Intent intent = new Intent(Intent.ACTION_MAIN);
+            intent.addCategory(Intent.CATEGORY_LAUNCHER);
+            intent.setClassName(best.activityInfo.packageName, best.activityInfo.name);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject result = new JSObject(); result.put("success", true); result.put("message", best.loadLabel(pm).toString() + " ကို ဖွင့်လိုက်ပါပြီ။"); call.resolve(result);
+        } catch (Exception e) { call.reject("App ဖွင့်မရပါ: " + e.getMessage(), e); }
+    }
+}
+""")
+(java_dir / "MykAccessibilityService.java").write_text("""package com.myk.guardianai;
+import android.accessibilityservice.AccessibilityService;
+import android.view.accessibility.AccessibilityEvent;
+public class MykAccessibilityService extends AccessibilityService {
+    public static volatile MykAccessibilityService instance;
+    @Override public void onServiceConnected() { super.onServiceConnected(); instance = this; }
+    @Override public void onAccessibilityEvent(AccessibilityEvent event) { /* Events are not stored or uploaded. */ }
+    @Override public void onInterrupt() {}
+    @Override public void onDestroy() { if (instance == this) instance = null; super.onDestroy(); }
+}
+""")
+(java_dir / "MykNotificationListenerService.java").write_text("""package com.myk.guardianai;
+import android.service.notification.NotificationListenerService;
+import android.service.notification.StatusBarNotification;
+public class MykNotificationListenerService extends NotificationListenerService {
+    @Override public void onNotificationPosted(StatusBarNotification sbn) { /* No notification content is stored or uploaded. */ }
+    @Override public void onNotificationRemoved(StatusBarNotification sbn) {}
+}
+""")
+(xml_dir / "myk_accessibility_service.xml").write_text("""<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewFocused"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/app_name" />
+""")
+manifest = app_dir / "AndroidManifest.xml"
+s = manifest.read_text()
+if "MykAccessibilityService" not in s:
+    s = s.replace("</application>", """    <service android:name=".MykAccessibilityService" android:label="Myk Guardian AI Accessibility" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
+        <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
+        <meta-data android:name="android.accessibilityservice" android:resource="@xml/myk_accessibility_service" />
+    </service>
+    <service android:name=".MykNotificationListenerService" android:label="Myk Guardian AI Notification Access" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" android:exported="true">
+        <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
+    </service>
+</application>""")
+manifest.write_text(s)
+print("Ensured location/microphone permissions and native Accessibility/Notification services")
