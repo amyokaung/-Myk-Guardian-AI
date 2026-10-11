@@ -42,7 +42,7 @@ if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService'
         </service>`;
   const closeIndex = manifest.lastIndexOf('</application>');
   if (closeIndex < 0) throw new Error('AndroidManifest.xml has no closing application element.');
-  manifest = manifest.slice(0, closeIndex) + declaration + '\n    ' + manifest.slice(closeIndex);
+  manifest = manifest.slice(0, closeIndex) + declaration + '\\n    ' + manifest.slice(closeIndex);
   fs.writeFileSync(manifestPath, manifest);
 }
 
@@ -51,39 +51,42 @@ function findMainActivity(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { const found = findMainActivity(full); if (found) return found; }
-    else if (/MainActivity\.java$|MainActivity\.kt$/.test(entry.name)) return full;
+    else if (/MainActivity\\.java$|MainActivity\\.kt$/.test(entry.name)) return full;
   }
   return null;
 }
 const activity = findMainActivity(path.join(appMain, 'java'));
 if (!activity) throw new Error('Could not find Capacitor MainActivity.java or MainActivity.kt.');
+const isJava = activity.endsWith('.java');
 let source = fs.readFileSync(activity, 'utf8');
-const importLine = 'import com.myk.guardianai.accessibility.AccessibilityBridgePlugin';
-if (!source.includes(importLine)) {
-  const packageMatch = source.match(/^package [^;\n]+;?\s*$/m);
+const importLine = isJava
+  ? 'import com.myk.guardianai.accessibility.AccessibilityBridgePlugin;'
+  : 'import com.myk.guardianai.accessibility.AccessibilityBridgePlugin';
+if (!source.includes('import com.myk.guardianai.accessibility.AccessibilityBridgePlugin')) {
+  const packageMatch = source.match(/^package [^;\\n]+;?\\s*$/m);
   if (!packageMatch) throw new Error('Could not find package declaration in MainActivity.');
   const pos = packageMatch.index + packageMatch[0].length;
-  source = source.slice(0, pos) + '\n\n' + importLine + source.slice(pos);
+  source = source.slice(0, pos) + '\\n\\n' + importLine + source.slice(pos);
 }
 const alreadyRegistered = source.includes('registerPlugin(AccessibilityBridgePlugin::class.java)') ||
   source.includes('registerPlugin(AccessibilityBridgePlugin.class)');
-if (!alreadyRegistered && activity.endsWith('.kt')) {
-  const classPattern = /class MainActivity\s*:\s*BridgeActivity\(\)\s*(\{)?/;
+if (!alreadyRegistered && !isJava) {
+  const classPattern = /class MainActivity\\s*:\\s*BridgeActivity\\(\\)\\s*(\\{)?/;
   if (!classPattern.test(source)) throw new Error('Unexpected MainActivity.kt declaration.');
-  if (/override fun onCreate\s*\(/.test(source)) {
-    source = source.replace(/super\.onCreate\(savedInstanceState\)/, 'registerPlugin(AccessibilityBridgePlugin::class.java)\n        super.onCreate(savedInstanceState)');
+  if (/override fun onCreate\\s*\\(/.test(source)) {
+    source = source.replace(/super\\.onCreate\\(savedInstanceState\\)/, 'registerPlugin(AccessibilityBridgePlugin::class.java)\\n        super.onCreate(savedInstanceState)');
   } else if (classPattern.exec(source)[1]) {
-    source = source.replace(classPattern, match => match + '\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n        registerPlugin(AccessibilityBridgePlugin::class.java)\n        super.onCreate(savedInstanceState)\n    }');
+    source = source.replace(classPattern, match => match + '\\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\\n        registerPlugin(AccessibilityBridgePlugin::class.java)\\n        super.onCreate(savedInstanceState)\\n    }');
   } else {
-    source = source.replace(classPattern, match => match + ' {\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n        registerPlugin(AccessibilityBridgePlugin::class.java)\n        super.onCreate(savedInstanceState)\n    }\n}');
+    source = source.replace(classPattern, match => match + ' {\\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\\n        registerPlugin(AccessibilityBridgePlugin::class.java)\\n        super.onCreate(savedInstanceState)\\n    }\\n}');
   }
-} else if (!alreadyRegistered && activity.endsWith('.java')) {
-  const classPattern = /public class MainActivity extends BridgeActivity\s*\{/;
+} else if (!alreadyRegistered && isJava) {
+  const classPattern = /public class MainActivity extends BridgeActivity\\s*\\{/;
   if (!classPattern.test(source)) throw new Error('Unexpected MainActivity.java declaration.');
-  if (/void onCreate\s*\(/.test(source)) {
-    source = source.replace(/super\.onCreate\(savedInstanceState\);/, 'registerPlugin(AccessibilityBridgePlugin.class);\n        super.onCreate(savedInstanceState);');
+  if (/void onCreate\\s*\\(/.test(source)) {
+    source = source.replace(/super\\.onCreate\\(savedInstanceState\\);/, 'registerPlugin(AccessibilityBridgePlugin.class);\\n        super.onCreate(savedInstanceState);');
   } else {
-    source = source.replace(classPattern, match => match + '\n    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        registerPlugin(AccessibilityBridgePlugin.class);\n        super.onCreate(savedInstanceState);\n    }');
+    source = source.replace(classPattern, match => match + '\\n    @Override\\n    public void onCreate(android.os.Bundle savedInstanceState) {\\n        registerPlugin(AccessibilityBridgePlugin.class);\\n        super.onCreate(savedInstanceState);\\n    }');
   }
 }
 fs.writeFileSync(activity, source);
