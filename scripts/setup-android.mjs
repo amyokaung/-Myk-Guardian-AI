@@ -12,14 +12,17 @@ if (!fs.existsSync(path.join(appMain, 'AndroidManifest.xml'))) throw new Error('
 const sourceRoot = path.join(root, 'native/android/src/main');
 const packagePath = path.join(appMain, 'java/com/myk/guardianai/accessibility');
 fs.mkdirSync(packagePath, { recursive: true });
-fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility/MyAccessibilityService.kt'), path.join(packagePath, 'MyAccessibilityService.kt'));
-fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility/AccessibilityBridgePlugin.kt'), path.join(packagePath, 'AccessibilityBridgePlugin.kt'));
-const xmlDir = path.join(appMain, 'res/xml');
-const valuesDir = path.join(appMain, 'res/values');
-fs.mkdirSync(xmlDir, { recursive: true });
-fs.mkdirSync(valuesDir, { recursive: true });
-fs.copyFileSync(path.join(sourceRoot, 'res/xml/accessibility_service_config.xml'), path.join(xmlDir, 'accessibility_service_config.xml'));
-fs.copyFileSync(path.join(sourceRoot, 'res/values/accessibility_strings.xml'), path.join(valuesDir, 'accessibility_strings.xml'));
+for (const name of ['MyAccessibilityService.kt', 'AccessibilityBridgePlugin.kt']) {
+  fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility', name), path.join(packagePath, name));
+}
+for (const [from, to] of [
+  ['res/xml/accessibility_service_config.xml', 'res/xml/accessibility_service_config.xml'],
+  ['res/values/accessibility_strings.xml', 'res/values/accessibility_strings.xml']
+]) {
+  const destination = path.join(appMain, to);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.copyFileSync(path.join(sourceRoot, from), destination);
+}
 
 const manifestPath = path.join(appMain, 'AndroidManifest.xml');
 let manifest = fs.readFileSync(manifestPath, 'utf8');
@@ -37,16 +40,14 @@ if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService'
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>`;
-  if (!manifest.includes('<application')) throw new Error('AndroidManifest.xml has no application element.');
-  manifest = manifest.replace('<application', '<application');
   const closeIndex = manifest.lastIndexOf('</application>');
   if (closeIndex < 0) throw new Error('AndroidManifest.xml has no closing application element.');
   manifest = manifest.slice(0, closeIndex) + declaration + '\n    ' + manifest.slice(closeIndex);
   fs.writeFileSync(manifestPath, manifest);
 }
 
-const mainActivity = path.join(appMain, 'java');
 function findMainActivity(dir) {
+  if (!fs.existsSync(dir)) return null;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) { const found = findMainActivity(full); if (found) return found; }
@@ -54,32 +55,36 @@ function findMainActivity(dir) {
   }
   return null;
 }
-const activity = findMainActivity(mainActivity);
+const activity = findMainActivity(path.join(appMain, 'java'));
 if (!activity) throw new Error('Could not find Capacitor MainActivity.java or MainActivity.kt.');
-let activitySource = fs.readFileSync(activity, 'utf8');
+let source = fs.readFileSync(activity, 'utf8');
 const importLine = 'import com.myk.guardianai.accessibility.AccessibilityBridgePlugin';
-if (!activitySource.includes(importLine)) {
-  const packageMatch = activitySource.match(/^package [^;\n]+;?\s*$/m);
-  if (packageMatch) {
-    const pos = packageMatch.index + packageMatch[0].length;
-    activitySource = activitySource.slice(0, pos) + '\n\n' + importLine + activitySource.slice(pos);
-  } else throw new Error('Could not find package declaration in MainActivity.');
+if (!source.includes(importLine)) {
+  const packageMatch = source.match(/^package [^;\n]+;?\s*$/m);
+  if (!packageMatch) throw new Error('Could not find package declaration in MainActivity.');
+  const pos = packageMatch.index + packageMatch[0].length;
+  source = source.slice(0, pos) + '\n\n' + importLine + source.slice(pos);
 }
-if (!activitySource.includes('registerPlugin(AccessibilityBridgePlugin::class.java)') &&
-    !activitySource.includes('registerPlugin(AccessibilityBridgePlugin.class)')) {
-  if (activity.endsWith('.kt')) {
-    const pattern = /class MainActivity\s*:\s*BridgeActivity\(\)\s*\{/;
-    if (pattern.test(activitySource)) {
-      activitySource = activitySource.replace(pattern, match => match + '\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n        super.onCreate(savedInstanceState)\n        bridge?.registerPlugin(AccessibilityBridgePlugin::class.java)\n    }');
-    } else if (/class MainActivity\s*:\s*BridgeActivity\(\)\s*\{/.test(activitySource)) {
-      throw new Error('Unable to register AccessibilityBridgePlugin in MainActivity.kt.');
-    }
+const alreadyRegistered = source.includes('registerPlugin(AccessibilityBridgePlugin::class.java)') ||
+  source.includes('registerPlugin(AccessibilityBridgePlugin.class)');
+if (!alreadyRegistered && activity.endsWith('.kt')) {
+  const classPattern = /class MainActivity\s*:\s*BridgeActivity\(\)\s*(\{)?/;
+  if (!classPattern.test(source)) throw new Error('Unexpected MainActivity.kt declaration.');
+  if (/override fun onCreate\s*\(/.test(source)) {
+    source = source.replace(/super\.onCreate\(savedInstanceState\)/, 'registerPlugin(AccessibilityBridgePlugin::class.java)\n        super.onCreate(savedInstanceState)');
+  } else if (classPattern.exec(source)[1]) {
+    source = source.replace(classPattern, match => match + '\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n        registerPlugin(AccessibilityBridgePlugin::class.java)\n        super.onCreate(savedInstanceState)\n    }');
   } else {
-    const pattern = /public class MainActivity extends BridgeActivity\s*\{/;
-    if (pattern.test(activitySource)) {
-      activitySource = activitySource.replace(pattern, match => match + '\n    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        registerPlugin(AccessibilityBridgePlugin.class);\n    }');
-    }
+    source = source.replace(classPattern, match => match + ' {\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n        registerPlugin(AccessibilityBridgePlugin::class.java)\n        super.onCreate(savedInstanceState)\n    }\n}');
   }
-  fs.writeFileSync(activity, activitySource);
+} else if (!alreadyRegistered && activity.endsWith('.java')) {
+  const classPattern = /public class MainActivity extends BridgeActivity\s*\{/;
+  if (!classPattern.test(source)) throw new Error('Unexpected MainActivity.java declaration.');
+  if (/void onCreate\s*\(/.test(source)) {
+    source = source.replace(/super\.onCreate\(savedInstanceState\);/, 'registerPlugin(AccessibilityBridgePlugin.class);\n        super.onCreate(savedInstanceState);');
+  } else {
+    source = source.replace(classPattern, match => match + '\n    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        registerPlugin(AccessibilityBridgePlugin.class);\n        super.onCreate(savedInstanceState);\n    }');
+  }
 }
-console.log('Accessibility native plugin files installed and Android manifest configured.');
+fs.writeFileSync(activity, source);
+console.log('Accessibility native plugin files installed, manifest configured, and Capacitor plugin registered.');
