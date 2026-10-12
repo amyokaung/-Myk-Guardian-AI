@@ -39,6 +39,13 @@ class AccessibilityBridgePlugin : Plugin() {
                 component.className == expectedListener.className
         }
         result.put("notificationEnabled", notificationAccessEnabled)
+        val microphoneGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val locationGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            (context.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+             context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
+        result.put("microphoneGranted", microphoneGranted)
+        result.put("locationGranted", locationGranted)
         call.resolve(result)
     }
 
