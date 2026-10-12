@@ -1,6 +1,7 @@
 package com.myk.guardianai.accessibility
 
 import android.content.Intent
+import android.content.ComponentName
 import android.media.AudioManager
 import android.view.KeyEvent
 import android.provider.Settings
@@ -20,7 +21,11 @@ class AccessibilityBridgePlugin : Plugin() {
     @PluginMethod
     fun getStatus(call: PluginCall) {
         val result = JSObject()
-        result.put("accessibilityEnabled", MyAccessibilityService.instance() != null)
+        val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+        val expectedService = ComponentName(context, MyAccessibilityService::class.java).flattenToString()
+        val enabledInSettings = enabledServices.split(':').any { it.equals(expectedService, ignoreCase = true) }
+        result.put("accessibilityEnabled", enabledInSettings)
+        result.put("serviceConnected", MyAccessibilityService.instance() != null)
         val notificationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
         } else true
