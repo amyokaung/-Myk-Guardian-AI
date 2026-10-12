@@ -6,7 +6,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -167,21 +167,93 @@ const capabilities = [
   { id:'files', title:'ဖိုင်အသုံးပြုမှု', desc:'Android file picker မှတစ်ဆင့် ရွေးချယ်ထားသောဖိုင်', level:'USER-SELECTED FILES' }
 ];
 function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
-  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">USER GATED</span></div>
-    <div class="notice"><b>⚠ အရေးကြီး</b><p>ဒီ build က အခြေခံ Agent UI ဖြစ်ပါတယ်။ Switch ဖွင့်ရုံနဲ့ Android permission တကယ်ရသွားတာမဟုတ်ပါ။ Native integration နဲ့ OS permission လိုအပ်ပါတယ်။</p></div>
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">LIVE ANDROID STATUS</span></div>
+    <div class="notice"><b>Android ခွင့်ပြုချက်အခြေအနေ</b><p>အောက်ပါအခြေအနေများကို Android OS မှ တိုက်ရိုက်စစ်ဆေးထားသည်။ Accessibility/Notification ကို Settings မှ ကိုယ်တိုင်ဖွင့်ရမည်။ Location/Microphone အတွက် ခွင့်ပြုချက်မရသေးလျှင် စမ်းသပ်ခလုတ်မှ တောင်းဆိုနိုင်သည်။</p></div>
     <div class="action-grid">
-      <button class="action-card" id="openSettings"><span>⚙</span><b>Android Settings</b><small>ဖုန်းဆက်တင်ကို ဖွင့်ရန်</small></button>
-      <button class="action-card" id="testConfirm"><span>✓</span><b>Permission စမ်းသပ်ရန်</b><small>အတည်ပြုချက်စမ်းသပ်မှု</small></button>
+      <button class="action-card" id="agentAccessibility"><span>⌘</span><b>Accessibility ဖွင့်ရန်</b><small>Android OS Settings</small></button>
+      <button class="action-card" id="agentNotifications"><span>🔔</span><b>Notification Access</b><small>Android OS Settings</small></button>
+      <button class="action-card" id="agentLocation"><span>📍</span><b>Location စမ်းရန်</b><small>OS permission တောင်းရန်</small></button>
+      <button class="action-card" id="agentMic"><span>🎙</span><b>Microphone စမ်းရန်</b><small>OS permission တောင်းရန်</small></button>
+      <button class="action-card" id="agentBack"><span>↩</span><b>Back Action</b><small>Android Global Back</small></button>
+      <button class="action-card" id="agentRefresh"><span>⟳</span><b>အခြေအနေ ပြန်စစ်ရန်</b><small>Native status refresh</small></button>
     </div>
-    <div class="card"><div class="card-title">အလုပ်လုပ်ခွင့်အခြေအနေ</div>${capabilities.map(c=>`<div class="status-row"><div><b>${c.title}</b><small>${c.level}</small></div><span class="state ${perms[c.id]?'enabled':''}">${perms[c.id]?'ENABLED':'DISABLED'}</span></div>`).join('')}</div>`;
-  view.querySelector('#openSettings')?.addEventListener('click', async () => {
-    if (!confirm('Android Accessibility Settings ကို ဖွင့်မလား? Myk Guardian AI ကို ကိုယ်တိုင်ရွေးပြီး Enable လုပ်နိုင်ပါတယ်။')) return;
-    try { await MykNative.openAccessibilitySettings(); }
-    catch (err) { alert('Android Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+    <div class="card"><div class="card-title">OS Permission နှင့် Native Integration</div>
+      <div class="status-row"><div><b>Native plugin</b><small id="agentNativeDetail">စစ်ဆေးနေသည်…</small></div><span id="agentNativeState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Accessibility Service</b><small id="agentAccessDetail">စစ်ဆေးနေသည်…</small></div><span id="agentAccessState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Notification Access</b><small id="agentNotificationDetail">စစ်ဆေးနေသည်…</small></div><span id="agentNotificationState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Microphone permission</b><small id="agentMicDetail">စစ်ဆေးနေသည်…</small></div><span id="agentMicState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Location permission</b><small id="agentLocationDetail">စစ်ဆေးနေသည်…</small></div><span id="agentLocationState" class="state">CHECKING</span></div>
+      <p class="hint" id="agentActionResult" aria-live="polite">အခြေအနေကို Android မှ စစ်ဆေးနေသည်။</p>
+    </div>`;
+  const resultLine = view.querySelector<HTMLElement>('#agentActionResult')!;
+  const setState = (id: string, enabled: boolean, detail: string) => {
+    const state = view.querySelector<HTMLElement>('#' + id + 'State')!;
+    const description = view.querySelector<HTMLElement>('#' + id + 'Detail')!;
+    state.textContent = enabled ? 'ENABLED' : 'DISABLED';
+    state.classList.toggle('enabled', enabled);
+    description.textContent = detail;
+  };
+  const refreshStatus = async () => {
+    resultLine.textContent = 'Android OS ခွင့်ပြုချက်များကို ပြန်စစ်နေသည်…';
+    try {
+      const status = await MykNative.getStatus();
+      setState('agentNative', true, 'Capacitor native plugin ဆက်သွယ်မှု အောင်မြင်သည်');
+      setState('agentAccess', status.accessibilityEnabled && status.serviceConnected,
+        status.accessibilityEnabled ? (status.serviceConnected ? 'Enabled ဖြစ်ပြီး service ချိတ်ဆက်ထားသည်' : 'Settings မှ On ဖြစ်သော်လည်း service မချိတ်ဆက်သေးပါ — Off/On ပြန်လုပ်ပါ') : 'Android Accessibility Settings မှ Enable လုပ်ပါ');
+      setState('agentNotification', status.notificationEnabled, status.notificationEnabled ? 'Notification listener ခွင့်ပြုထားသည်' : 'Notification Access Settings မှ Enable လုပ်ပါ');
+      setState('agentMic', status.microphoneGranted, status.microphoneGranted ? 'Android RECORD_AUDIO permission ရရှိထားသည်' : 'စမ်းသပ်ရန် ခလုတ်ကိုနှိပ်ပြီး Microphone Allow လုပ်ပါ');
+      setState('agentLocation', status.locationGranted, status.locationGranted ? 'Android Location permission ရရှိထားသည်' : 'စမ်းသပ်ရန် ခလုတ်ကိုနှိပ်ပြီး Location Allow လုပ်ပါ');
+      resultLine.textContent = 'OS မှ အခြေအနေကို အောင်မြင်စွာ ပြန်စစ်ပြီးပါပြီ။';
+    } catch (err) {
+      setState('agentNative', false, 'Native plugin မရပါ။ ဒီ branch မှ နောက်ဆုံး APK ကို build/install လုပ်ပါ။');
+      setState('agentAccess', false, 'Native status မရရှိပါ'); setState('agentNotification', false, 'Native status မရရှိပါ');
+      setState('agentMic', false, 'Native status မရရှိပါ'); setState('agentLocation', false, 'Native status မရရှိပါ');
+      resultLine.textContent = 'Native integration မရပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
+  };
+  view.querySelector('#agentAccessibility')?.addEventListener('click', async () => {
+    try { await MykNative.openAccessibilitySettings(); resultLine.textContent = 'Accessibility Settings ဖွင့်ပြီးပါပြီ။ Myk Guardian AI ကို Enable လုပ်ပြီး ပြန်လာပါ။'; }
+    catch (err) { resultLine.textContent = 'Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
   });
-  view.querySelector('#testConfirm')?.addEventListener('click', () => {
-    if (confirm('ဒီအရာက အတည်ပြုချက် dialog စမ်းသပ်မှုသာဖြစ်ပါတယ်။ ဆက်လုပ်မလား?')) alert('အတည်ပြုချက်ကို လက်ခံရရှိပါတယ်။ စမ်းသပ်မှုသာဖြစ်ပြီး ဖုန်းမှာ ဘာမှမပြောင်းလဲခဲ့ပါ။');
+  view.querySelector('#agentNotifications')?.addEventListener('click', async () => {
+    try { await MykNative.openNotificationSettings(); resultLine.textContent = 'Notification Access Settings ဖွင့်ပြီးပါပြီ။ Myk Guardian AI ကို Enable လုပ်ပြီး ပြန်လာပါ။'; }
+    catch (err) { resultLine.textContent = 'Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
   });
+  view.querySelector('#agentLocation')?.addEventListener('click', async () => {
+    try {
+      let status = await Geolocation.checkPermissions();
+      if (status.location !== 'granted') status = await Geolocation.requestPermissions();
+      if (status.location === 'granted') {
+        await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000 });
+        resultLine.textContent = 'Location permission ရရှိပြီး တည်နေရာစမ်းသပ်မှု အောင်မြင်သည်။';
+      } else resultLine.textContent = 'Location permission မရသေးပါ: ' + status.location;
+    } catch (err) { resultLine.textContent = 'Location စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+    await refreshStatus();
+  });
+  view.querySelector('#agentMic')?.addEventListener('click', async () => {
+    try {
+      const permission = await VoiceRecorder.requestAudioRecordingPermission();
+      if (!permission.value) throw new Error('Microphone permission ကို Android က ခွင့်မပြုပါ။');
+      await VoiceRecorder.startRecording(); await new Promise(resolve => window.setTimeout(resolve, 350)); await VoiceRecorder.stopRecording();
+      resultLine.textContent = 'Microphone permission ရရှိပြီး စမ်းသပ်ပြီးချင်း ရပ်ထားသည်။ အသံဖိုင်ကို မသိမ်းပါ။';
+    } catch (err) { resultLine.textContent = 'Microphone စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+    await refreshStatus();
+  });
+  view.querySelector('#agentBack')?.addEventListener('click', async () => {
+    resultLine.textContent = 'Back action ကို Android Accessibility Service ထံ ပို့နေသည်…';
+    try {
+      const status = await MykNative.getStatus();
+      if (!status.accessibilityEnabled || !status.serviceConnected) {
+        resultLine.textContent = 'Back မလုပ်နိုင်ပါ။ Android Settings > Accessibility > Myk Guardian AI ကို Enable လုပ်ပြီး Off/On ပြန်လုပ်ပါ။'; return;
+      }
+      const result = await MykNative.performAction({ action: 'back' });
+      resultLine.textContent = result.success ? 'Android Global Back action ကို လက်ခံရရှိပါပြီ။ ဒီ app မှ ထွက်သွားနိုင်သည်။' : 'Back action မအောင်မြင်ပါ: ' + (result.message || 'Android rejected action');
+    } catch (err) { resultLine.textContent = 'Back action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+  });
+  view.querySelector('#agentRefresh')?.addEventListener('click', () => { void refreshStatus(); });
+  window.addEventListener('focus', () => { void refreshStatus(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshStatus(); });
+  void refreshStatus();
 }
 function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">OWNER AUTHORITY</span><h2>Permission Center</h2></div><span class="pill">REAL PERMISSION TESTS</span></div>
@@ -193,7 +265,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       <div class="status-row"><div><b>⌘ Accessibility Service</b><small id="accessibilityStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableAccessibility">Settings ဖွင့်ရန်</button></div>
       <div class="status-row"><div><b>🔔 Notification Access</b><small id="notificationAccessStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableNotifications">Settings ဖွင့်ရန်</button></div>
       <div class="status-row"><div><b>နောက်ဆုံး Notification များ</b><small id="recentNotifications">ခွင့်ပြုထားမှသာ ဖတ်နိုင်သည်။ ဖုန်းထဲမှာပဲ သိမ်းထားသည်။</small></div><button class="secondary" id="readNotifications">ဖတ်ရန်</button></div>
-      <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small>Accessibility ကို Enable လုပ်ပြီးမှ အသုံးပြုနိုင်သည်</small></div><button class="secondary" id="testBack">စမ်းသပ်ရန်</button></div>
+      <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small id="backTestStatus">Accessibility ကို Enable လုပ်ပြီးမှ အသုံးပြုနိုင်သည်။ စမ်းသပ်ရာတွင် လက်ရှိ app မှ ထွက်သွားနိုင်သည်။</small></div><button class="secondary" id="testBack">Back လုပ်ရန်</button></div>
       <input id="filePicker" type="file" hidden>
     </div>
     <p class="hint">Location စမ်းသပ်ရာတွင် တည်နေရာကို ရယူပြီး screen ပေါ်တွင်သာ ပြမည်။ Microphone စမ်းသပ်ရာတွင် အသံကို မှတ်တမ်းမတင်ဘဲ ချက်ချင်းရပ်မည်။</p>`;
@@ -294,28 +366,19 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     }
   });
   view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
-    if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
+    const statusLine = view.querySelector<HTMLElement>('#backTestStatus')!;
+    statusLine.textContent = 'Back action ကို Android Accessibility Service ထံ ပို့နေသည်…';
     try {
       const status = await MykNative.getStatus();
       if (!status.accessibilityEnabled || !status.serviceConnected) {
-        alert('Accessibility Service ကို Android က ချိတ်ဆက်ထားခြင်း မရှိသေးပါ။\\n\\nSettings > Accessibility > Myk Guardian AI ကို Off/On ပြန်လုပ်ပြီး App ကို ပြန်ဖွင့်ပါ။');
+        statusLine.textContent = 'Back မလုပ်နိုင်ပါ။ Android Settings > Accessibility > Myk Guardian AI ကို Enable လုပ်ပြီး Off/On ပြန်လုပ်ပါ。';
         return;
       }
       const result = await MykNative.performAction({ action: 'back' });
-      // Do not open a blocking alert immediately: it can block the native
-      // delayed fallback on Android's main thread.
-      window.setTimeout(() => {
-        alert(
-          'Back Action စစ်ဆေးချက်\\n\\n' +
-          'Accessibility Enabled: ' + status.accessibilityEnabled + '\n' +
-          'Notification Access: ' + status.notificationEnabled + '\n' +
-          'Native Back Result: ' + result.success + '\n' +
-          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\n\\n' +
-          'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
-        );
-      }, 800);
-  
-    } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+      statusLine.textContent = result.success ? 'Android က Global Back ကို လက်ခံပြီးပါပြီ။ App မှ ထွက်သွားနိုင်သည်။' : 'Back မအောင်မြင်ပါ: ' + (result.message || 'Android rejected action');
+    } catch (err) {
+      statusLine.textContent = 'Back မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
   view.querySelector<HTMLButtonElement>('#chooseFile')!.addEventListener('click', () => picker.click());
