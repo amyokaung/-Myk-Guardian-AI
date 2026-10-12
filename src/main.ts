@@ -375,7 +375,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
         return;
       }
       const result = await MykNative.performAction({ action: 'back' });
-      statusLine.textContent = result.success ? 'Android က Global Back ကို လက်ခံပြီးပါပြီ။ App မှ ထွက်သွားနိုင်သည်။' : 'Back မအောင်မြင်ပါ: ' + (result.message || 'Android rejected action');
+      statusLine.textContent = result.success ? (result.message || 'Back action ပို့ပြီးပါပြီ။ App မပြောင်းပါက Myk ကို နောက်ခံသို့ ရွှေ့ပေးပါမည်။') : 'Back မအောင်မြင်ပါ: ' + (result.message || 'Android rejected action');
     } catch (err) {
       statusLine.textContent = 'Back မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
     }
