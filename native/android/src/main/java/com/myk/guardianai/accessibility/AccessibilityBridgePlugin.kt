@@ -145,6 +145,14 @@ class AccessibilityBridgePlugin : Plugin() {
                     context.startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     "Android Settings ကို ဖွင့်လိုက်ပါပြီ။"
                 }
+                "clickText" -> {
+                    val text = call.getString("text")?.trim().orEmpty()
+                    if (text.isEmpty()) throw IllegalArgumentException("နှိပ်မည့် စာသား မပါပါ။")
+                    val service = MyAccessibilityService.instance() ?: throw IllegalStateException("Accessibility permission ကို Android Settings မှာ ဖွင့်ပါ။")
+                    val exact = call.getBoolean("exact", false) ?: false
+                    if (!service.clickText(text, exact)) throw IllegalStateException("မျက်နှာပြင်ပေါ်မှာ နှိပ်နိုင်တဲ့ စာသား မတွေ့ပါ: $text")
+                    "$text ကို နှိပ်ပြီးပါပြီ။"
+                }
                 else -> throw IllegalArgumentException("မပံ့ပိုးသော Android action: $action")
             }
             val result = JSObject()
