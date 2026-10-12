@@ -7,6 +7,8 @@ import android.view.KeyEvent
 import android.provider.Settings
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import com.getcapacitor.JSObject
 import com.getcapacitor.JSArray
 import com.getcapacitor.Plugin
@@ -87,7 +89,42 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     @PluginMethod
-    fun back(call: PluginCall) = runAccessibilityAction(call, "Back") { it.back() }
+    fun back(call: PluginCall) {
+        val service = MyAccessibilityService.instance()
+        if (service == null) {
+            call.reject("Accessibility service is not enabled. Enable Myk Guardian AI in Android Accessibility settings.")
+            return
+        }
+        try {
+            if (!performBackWithFallback(service)) {
+                call.reject("Android က Back action ကို လက်မခံပါ။ Accessibility Service ကို Off/On ပြန်လုပ်ပါ။")
+                return
+            }
+            val result = JSObject()
+            result.put("success", true)
+            result.put("message", "Back action ပို့ပြီးပါပြီ။ App မပြောင်းပါက Myk ကို နောက်ခံသို့ ရွှေ့ပေးပါမည်။")
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("Back action မအောင်မြင်ပါ: ${error.message}", error)
+        }
+    }
+
+    /**
+     * Some Android/Capacitor combinations acknowledge GLOBAL_ACTION_BACK but keep
+     * the WebView task visible. Give the OS a short chance to handle Back first,
+     * then background only Myk's Activity if it is still present.
+     */
+    private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
+        val accepted = service.back()
+        if (!accepted) return false
+        val hostActivity = activity
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (!hostActivity.isFinishing && !hostActivity.isDestroyed) {
+                hostActivity.moveTaskToBack(true)
+            }
+        }, 450L)
+        return true
+    }
 
     @PluginMethod
     fun home(call: PluginCall) = runAccessibilityAction(call, "Home") { it.home() }
@@ -164,8 +201,8 @@ class AccessibilityBridgePlugin : Plugin() {
                 "back" -> {
                     val service = MyAccessibilityService.instance()
                         ?: throw IllegalStateException("Accessibility permission ကို Android Settings မှာ ဖွင့်ပါ။")
-                    if (!service.back()) throw IllegalStateException("Android က Back action ကို မလုပ်ဆောင်နိုင်ပါ။")
-                    "Back action လုပ်ပြီးပါပြီ။"
+                    if (!performBackWithFallback(service)) throw IllegalStateException("Android က Back action ကို မလုပ်ဆောင်နိုင်ပါ။")
+                    "Back action ပို့ပြီးပါပြီ။ App မပြောင်းပါက Myk ကို နောက်ခံသို့ ရွှေ့ပေးပါမည်။"
                 }
                 "home" -> {
                     val service = MyAccessibilityService.instance()
