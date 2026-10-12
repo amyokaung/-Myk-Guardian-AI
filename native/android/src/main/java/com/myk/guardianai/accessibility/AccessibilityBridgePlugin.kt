@@ -102,7 +102,7 @@ class AccessibilityBridgePlugin : Plugin() {
             }
             val result = JSObject()
             result.put("success", true)
-            result.put("message", "Back action ပို့ပြီးပါပြီ။ App မပြောင်းပါက Myk ကို နောက်ခံသို့ ရွှေ့ပေးပါမည်။")
+            result.put("message", "Myk ကို နောက်ခံသို့ ရွှေ့ပြီး ယခင် App ပေါ်တွင် Back action လုပ်ပါမည်။")
             call.resolve(result)
         } catch (error: Exception) {
             call.reject("Back action မအောင်မြင်ပါ: ${error.message}", error)
@@ -110,19 +110,22 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     /**
-     * Some Android/Capacitor combinations acknowledge GLOBAL_ACTION_BACK but keep
-     * the WebView task visible. Give the OS a short chance to handle Back first,
-     * then background only Myk's Activity if it is still present.
+     * The Back button lives inside Myk, so dispatching GLOBAL_ACTION_BACK before
+     * leaving Myk only navigates Myk itself. Background Myk first, then dispatch
+     * Back again after the previous app has become foreground.
      */
     private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
-        val accepted = service.back()
-        if (!accepted) return false
         val hostActivity = activity
-        Handler(Looper.getMainLooper()).postDelayed({
+        Handler(Looper.getMainLooper()).post {
             if (!hostActivity.isFinishing && !hostActivity.isDestroyed) {
                 hostActivity.moveTaskToBack(true)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    MyAccessibilityService.instance()?.back()
+                }, 250L)
+            } else {
+                service.back()
             }
-        }, 450L)
+        }
         return true
     }
 
