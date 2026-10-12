@@ -22,13 +22,22 @@ class AccessibilityBridgePlugin : Plugin() {
     fun getStatus(call: PluginCall) {
         val result = JSObject()
         val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
-        val expectedService = ComponentName(context, MyAccessibilityService::class.java).flattenToString()
-        val enabledInSettings = enabledServices.split(':').any { it.equals(expectedService, ignoreCase = true) }
+        val expectedService = ComponentName(context, MyAccessibilityService::class.java)
+        val enabledInSettings = enabledServices.split(':').any { entry ->
+            val component = ComponentName.unflattenFromString(entry.trim())
+            component != null && component.packageName == expectedService.packageName &&
+                component.className == expectedService.className
+        }
+        val connected = MyAccessibilityService.instance() != null
         result.put("accessibilityEnabled", enabledInSettings)
-        result.put("serviceConnected", MyAccessibilityService.instance() != null)
+        result.put("serviceConnected", connected)
         val enabledListeners = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners").orEmpty()
-        val expectedListener = ComponentName(context, MyNotificationListenerService::class.java).flattenToString()
-        val notificationAccessEnabled = enabledListeners.split(':').any { it.equals(expectedListener, ignoreCase = true) }
+        val expectedListener = ComponentName(context, MyNotificationListenerService::class.java)
+        val notificationAccessEnabled = enabledListeners.split(':').any { entry ->
+            val component = ComponentName.unflattenFromString(entry.trim())
+            component != null && component.packageName == expectedListener.packageName &&
+                component.className == expectedListener.className
+        }
         result.put("notificationEnabled", notificationAccessEnabled)
         call.resolve(result)
     }
