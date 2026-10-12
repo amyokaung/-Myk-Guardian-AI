@@ -39,7 +39,7 @@ if (!gradle.includes('org.jetbrains.kotlin.android') && !gradle.includes('kotlin
 const sourceRoot = path.join(root, 'native/android/src/main');
 const packagePath = path.join(appMain, 'java/com/myk/guardianai/accessibility');
 fs.mkdirSync(packagePath, { recursive: true });
-for (const name of ['MyAccessibilityService.kt', 'AccessibilityBridgePlugin.kt']) {
+for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt']) {
   fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility', name), path.join(packagePath, name));
 }
 for (const [from, to] of [
@@ -57,8 +57,7 @@ let manifest = fs.readFileSync(manifestPath, 'utf8');
 if (!manifest.includes('android.permission.QUERY_ALL_PACKAGES')) {
   manifest = manifest.replace(/<manifest([^>]*)>/, match => match + '\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />');
 }
-if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService')) {
-  const declaration = `
+const serviceDeclarations = `
         <service
             android:name="com.myk.guardianai.accessibility.MyAccessibilityService"
             android:label="Myk Guardian AI Accessibility"
@@ -70,10 +69,25 @@ if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService'
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+        </service>
+        <service
+            android:name="com.myk.guardianai.accessibility.MyNotificationListenerService"
+            android:label="Myk Guardian AI Notification Access"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
         </service>`;
+if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService') ||
+    !manifest.includes('com.myk.guardianai.accessibility.MyNotificationListenerService')) {
+  const declarations = serviceDeclarations
+    .split('</service>').filter(Boolean).map(part => part.trim() + '</service>').filter(part =>
+      !manifest.includes(part.includes('MyAccessibilityService') ? 'com.myk.guardianai.accessibility.MyAccessibilityService' : 'com.myk.guardianai.accessibility.MyNotificationListenerService')
+    ).join('\n        ');
   const closeIndex = manifest.lastIndexOf('</application>');
   if (closeIndex < 0) throw new Error('AndroidManifest.xml has no closing application element.');
-  manifest = manifest.slice(0, closeIndex) + declaration + '\n    ' + manifest.slice(closeIndex);
+  manifest = manifest.slice(0, closeIndex) + declarations + '\n    ' + manifest.slice(closeIndex);
   fs.writeFileSync(manifestPath, manifest);
 }
 
