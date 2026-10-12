@@ -96,8 +96,9 @@ if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService'
   const closeIndex = manifest.lastIndexOf('</application>');
   if (closeIndex < 0) throw new Error('AndroidManifest.xml has no closing application element.');
   manifest = manifest.slice(0, closeIndex) + declarations + '\n    ' + manifest.slice(closeIndex);
-  fs.writeFileSync(manifestPath, manifest);
 }
+
+if (manifest !== fs.readFileSync(manifestPath, 'utf8')) fs.writeFileSync(manifestPath, manifest);
 
 function findMainActivity(dir) {
   if (!fs.existsSync(dir)) return null;
