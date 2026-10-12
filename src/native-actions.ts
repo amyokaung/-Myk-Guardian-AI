@@ -32,8 +32,10 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   if (/^\s*(home|go home|home button)\s*$|ပင်မစာမျက်နှာ|home ကိုသွား/.test(text)) return executeAgentAction('home');
   if (/\b(back|go back|press back|back button)\b|နောက်ပြန်|နောက်သို့ပြန်|ပြန်သွား/.test(text)) return executeAgentAction('back');
   if (/settings|ဆက်တင်/.test(text) && /ဖွင့်|open|သွား/.test(text)) return executeAgentAction('open_settings');
-  const clickMatch = text.match(/(?:နှိပ်ပေး|နှိပ်ပါ|click|tap)\s*["'“”]?(.+?)["'“”]?\s*$/);
-  if (clickMatch?.[1]?.trim()) return executeAgentAction('click_text', { text: clickMatch[1].trim() });
+  const burmeseClick = text.match(/^(.+?)(?:\s*ကို)?\s*(?:နှိပ်ပေး|နှိပ်ပါ|နှိပ်လိုက်|နှိပ်)\s*$/);
+  const englishClick = text.match(/^\s*(?:click|tap)\s+["'“]?(.+?)["'”]?\s*$/);
+  const clickTarget = (burmeseClick?.[1] || englishClick?.[1] || '').trim().replace(/["'“”]/g, '');
+  if (clickTarget) return executeAgentAction('click_text', { text: clickTarget });
   const englishOpen = text.match(/^\s*open\s+(.+?)\s*$/);
   const burmeseOpen = text.match(/^\s*(.+?)\s*(?:ကို\s*)?(?:ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်လိုက်|ဖွင့်)\s*$/);
   const target = (englishOpen?.[1] || burmeseOpen?.[1] || '').trim().replace(/\s*ကို\s*$/,'').replace(/^(ကျေးဇူးပြု၍|please)\s*/,'').trim();
