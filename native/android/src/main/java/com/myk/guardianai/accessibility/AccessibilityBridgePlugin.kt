@@ -6,9 +6,9 @@ import android.media.AudioManager
 import android.view.KeyEvent
 import android.provider.Settings
 import android.content.pm.PackageManager
-import android.app.NotificationManager
 import android.os.Build
 import com.getcapacitor.JSObject
+import com.getcapacitor.JSArray
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
@@ -26,10 +26,10 @@ class AccessibilityBridgePlugin : Plugin() {
         val enabledInSettings = enabledServices.split(':').any { it.equals(expectedService, ignoreCase = true) }
         result.put("accessibilityEnabled", enabledInSettings)
         result.put("serviceConnected", MyAccessibilityService.instance() != null)
-        val notificationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            context.getSystemService(NotificationManager::class.java).areNotificationsEnabled()
-        } else true
-        result.put("notificationEnabled", notificationsEnabled)
+        val enabledListeners = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners").orEmpty()
+        val expectedListener = ComponentName(context, MyNotificationListenerService::class.java).flattenToString()
+        val notificationAccessEnabled = enabledListeners.split(':').any { it.equals(expectedListener, ignoreCase = true) }
+        result.put("notificationEnabled", notificationAccessEnabled)
         call.resolve(result)
     }
 
@@ -40,7 +40,23 @@ class AccessibilityBridgePlugin : Plugin() {
 
     @PluginMethod
     fun openNotificationSettings(call: PluginCall) {
-        openSettings(call, Settings.ACTION_APP_NOTIFICATION_SETTINGS, "android.provider.extra.APP_PACKAGE", context.packageName)
+        openSettings(call, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+    }
+
+    @PluginMethod
+    fun getRecentNotifications(call: PluginCall) {
+        val result = JSObject()
+        val items = JSArray()
+        MyNotificationListenerService.snapshot().take(20).forEach { item ->
+            val row = JSObject()
+            row.put("packageName", item.packageName)
+            row.put("title", item.title)
+            row.put("text", item.text)
+            row.put("postTime", item.postTime)
+            items.put(row)
+        }
+        result.put("notifications", items)
+        call.resolve(result)
     }
 
     private fun openSettings(call: PluginCall, action: String, extra: String? = null, value: String? = null) {
