@@ -53,6 +53,10 @@ for (const [from, to] of [
 
 const manifestPath = path.join(appMain, 'AndroidManifest.xml');
 let manifest = fs.readFileSync(manifestPath, 'utf8');
+// This is a sideloaded personal assistant; app launch-by-label needs package visibility on Android 11+.
+if (!manifest.includes('android.permission.QUERY_ALL_PACKAGES')) {
+  manifest = manifest.replace(/<manifest([^>]*)>/, match => match + '\n    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />');
+}
 if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService')) {
   const declaration = `
         <service
