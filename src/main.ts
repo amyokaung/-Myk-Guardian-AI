@@ -105,8 +105,8 @@ function renderChat(view: HTMLElement) {
 const PROVIDER_NAME = 'myk.ai.provider';
 const GEMINI_KEY_NAME = 'myk.gemini.key';
 const GEMINI_MODEL_NAME = 'myk.gemini.model';
-const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings'] }, app: { type: 'string', description: 'App name, required only for open_app.' } }, required: ['action'], additionalProperties: false } } }];
-const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings'] }, app: { type: 'STRING', description: 'App name, required only for open_app.' } }, required: ['action'] } }] }];
+const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text'] }, app: { type: 'string', description: 'App name, required only for open_app.' }, text: { type: 'string', description: 'Visible text to click, required only for click_text.' }, exact: { type: 'boolean', description: 'Match visible text exactly when true.' } }, required: ['action'], additionalProperties: false } } }];
+const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text'] }, app: { type: 'STRING', description: 'App name, required only for open_app.' }, text: { type: 'STRING', description: 'Visible text to click, required only for click_text.' }, exact: { type: 'BOOLEAN', description: 'Match visible text exactly when true.' } }, required: ['action'] } }] }];
 
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
@@ -248,13 +248,17 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     try {
       const status = await MykNative.getStatus();
       accessibilityStatus.textContent = status.accessibilityEnabled ? 'ဖွင့်ထားသည် — Accessibility Service Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
-      notificationStatus.textContent = status.notificationEnabled ? 'ဖွင့်ထားသည် — Notification Access Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+      notificationStatus.textContent = status.notificationEnabled ? 'App notification ခွင့်ပြုထားသည်' : 'App notification ပိတ်ထားသည်';
     } catch (err) {
       accessibilityStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
       notificationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
     }
   };
   void refreshNativeStatus();
+  // Android Settings returns to the WebView; refresh actual native status on resume/focus.
+  const refreshOnResume = () => { void refreshNativeStatus(); };
+  window.addEventListener('focus', refreshOnResume);
+  document.addEventListener('visibilitychange', refreshOnResume);
   view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
     try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ Myk Guardian AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
     catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
