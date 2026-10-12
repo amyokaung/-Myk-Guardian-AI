@@ -6,7 +6,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -191,7 +191,8 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       <div class="status-row"><div><b>🎙 မိုက်ခရိုဖုန်း (Microphone)</b><small id="micStatus">ခွင့်ပြုချက် မစမ်းရသေးပါ</small></div><button class="secondary" id="requestMic">စမ်းသပ်ရန်</button></div>
       <div class="status-row"><div><b>📁 ဖိုင်ရွေးချယ်ခြင်း</b><small id="fileStatus">ဖိုင်ကို ဖုန်းထဲတွင်သာ ရွေးချယ်မည်</small></div><button class="secondary" id="chooseFile">ဖိုင်ရွေးရန်</button></div>
       <div class="status-row"><div><b>⌘ Accessibility Service</b><small id="accessibilityStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableAccessibility">Settings ဖွင့်ရန်</button></div>
-      <div class="status-row"><div><b>🔔 App Notifications</b><small id="notificationAccessStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableNotifications">Settings ဖွင့်ရန်</button></div>
+      <div class="status-row"><div><b>🔔 Notification Access</b><small id="notificationAccessStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableNotifications">Settings ဖွင့်ရန်</button></div>
+      <div class="status-row"><div><b>နောက်ဆုံး Notification များ</b><small id="recentNotifications">ခွင့်ပြုထားမှသာ ဖတ်နိုင်သည်။ ဖုန်းထဲမှာပဲ သိမ်းထားသည်။</small></div><button class="secondary" id="readNotifications">ဖတ်ရန်</button></div>
       <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small>Accessibility ကို Enable လုပ်ပြီးမှ အသုံးပြုနိုင်သည်</small></div><button class="secondary" id="testBack">စမ်းသပ်ရန်</button></div>
       <input id="filePicker" type="file" hidden>
     </div>
@@ -267,6 +268,30 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   view.querySelector<HTMLButtonElement>('#enableNotifications')!.addEventListener('click', async () => {
     try { await MykNative.openNotificationSettings(); alert('Notification Access စာမျက်နှာမှာ Myk Guardian AI ကို ဖွင့်ပေးပါ။'); }
     catch (err) { alert('Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+  });
+  view.querySelector<HTMLButtonElement>('#readNotifications')!.addEventListener('click', async () => {
+    const output = view.querySelector<HTMLElement>('#recentNotifications')!;
+    const button = view.querySelector<HTMLButtonElement>('#readNotifications')!;
+    button.disabled = true;
+    try {
+      const status = await MykNative.getStatus();
+      if (!status.notificationEnabled) {
+        output.textContent = 'Notification Access မဖွင့်ရသေးပါ။ Settings ဖွင့်ပြီး Myk Guardian AI ကို Allow လုပ်ပါ။';
+        return;
+      }
+      const result = await MykNative.getRecentNotifications();
+      if (!result.notifications.length) {
+        output.textContent = 'ဖတ်စရာ Notification မရှိသေးပါ။ ခွင့်ပြုပြီးနောက် ဝင်လာသော Notification များကို စမ်းပါ။';
+      } else {
+        output.innerHTML = result.notifications.map(n =>
+          '<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>' + esc(n.title || n.packageName) + '</b><div>' + esc(n.text || '(စာသားမပါ)') + '</div><small>' + esc(n.packageName) + '</small></div>'
+        ).join('');
+      }
+    } catch (err) {
+      output.textContent = 'Notification မဖတ်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      button.disabled = false;
+    }
   });
   view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
     if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
