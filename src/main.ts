@@ -297,8 +297,8 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
     try {
       const status = await MykNative.getStatus();
-      if (!status.accessibilityEnabled) {
-        alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > Myk Guardian AI ကို On လုပ်ပါ။');
+      if (!status.accessibilityEnabled || !status.serviceConnected) {
+        alert('Accessibility Service ကို Android က ချိတ်ဆက်ထားခြင်း မရှိသေးပါ။\\n\\nSettings > Accessibility > Myk Guardian AI ကို Off/On ပြန်လုပ်ပြီး App ကို ပြန်ဖွင့်ပါ။');
         return;
       }
       const result = await MykNative.performAction({ action: 'back' });
@@ -307,10 +307,10 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       window.setTimeout(() => {
         alert(
           'Back Action စစ်ဆေးချက်\\n\\n' +
-          'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
-          'Notification Access: ' + status.notificationEnabled + '\\n' +
-          'Native Back Result: ' + result.success + '\\n' +
-          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
+          'Accessibility Enabled: ' + status.accessibilityEnabled + '\n' +
+          'Notification Access: ' + status.notificationEnabled + '\n' +
+          'Native Back Result: ' + result.success + '\n' +
+          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\n\\n' +
           'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
         );
       }, 800);
