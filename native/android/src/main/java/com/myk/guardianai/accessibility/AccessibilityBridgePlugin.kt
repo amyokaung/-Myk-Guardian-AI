@@ -254,21 +254,9 @@ class AccessibilityBridgePlugin : Plugin() {
                     val noteText = call.getString("text")?.trim().orEmpty()
                     if (noteText.isEmpty()) throw IllegalArgumentException("မှတ်စုစာသား မပါပါ။")
                     val pm = context.packageManager
-                    // First try Android's standard create-note intent. Some Notes apps register it
-                    // even when their launcher label is localized or does not contain "Note".
-                    val createNote = Intent("android.intent.action.CREATE_NOTE")
-                        .putExtra(Intent.EXTRA_TEXT, noteText)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    val createNoteHandler = try { createNote.resolveActivity(pm) } catch (_: Exception) { null }
-                    if (createNoteHandler != null) {
-                        context.startActivity(createNote)
-                        val result = JSObject()
-                        result.put("success", true)
-                        result.put("message", "ဖုန်းရဲ့ Notes app ကို မှတ်စုစာသားနဲ့ ဖွင့်ပေးလိုက်ပါပြီ။ စာသားပါဝင်မှုကို စစ်ဆေးပါ။")
-                        call.resolve(result)
-                        return
-                    }
-
+                    // Prefer the user's explicitly named "Notes" app. The generic CREATE_NOTE
+                    // intent may route to an unrelated handler or report success without opening
+                    // the actual Notes launcher, so use it only if no Notes app can be found.
                     val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L)) else {
                         @Suppress("DEPRECATION")
                         pm.getInstalledApplications(0)
@@ -284,14 +272,27 @@ class AccessibilityBridgePlugin : Plugin() {
                         val label = pm.getApplicationLabel(info).toString().lowercase()
                         if (label == "notes" || label == "note" || label == "notepad" || label == "memo" || label == "မှတ်စု") 0 else 1
                     }
-                    val noteApp = candidates.firstOrNull { pm.getLaunchIntentForPackage(it.packageName) != null }
+                    val noteApp = candidates.firstOrNull { pm.getApplicationLabel(it).toString().equals("Notes", ignoreCase = true) && pm.getLaunchIntentForPackage(it.packageName) != null }
+                        ?: candidates.firstOrNull { pm.getLaunchIntentForPackage(it.packageName) != null }
                     if (noteApp == null) {
+                        val createNote = Intent("android.intent.action.CREATE_NOTE")
+                            .putExtra(Intent.EXTRA_TEXT, noteText)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        val createNoteHandler = try { createNote.resolveActivity(pm) } catch (_: Exception) { null }
+                        if (createNoteHandler != null) {
+                            context.startActivity(createNote)
+                            val result = JSObject()
+                            result.put("success", true)
+                            result.put("message", "Notes ကို ဖွင့်ပေးလိုက်ပါပြီ။ မှတ်စုစာသား ပါဝင်မှုကို စစ်ဆေးပါ။")
+                            call.resolve(result)
+                            return
+                        }
                         val foundLabels = candidates.take(6).joinToString(", ") { pm.getApplicationLabel(it).toString() }
-                        val detail = if (foundLabels.isNotBlank()) " တွေ့တဲ့ app: $foundLabels" else " ဖုန်းထဲက Note app အမည်ကို မသိရသေးပါ။"
-                        throw IllegalStateException("Note app ကို မဖွင့်နိုင်သေးပါ။ Settings ထဲရှိ App အမည်အတိုင်း ပြောပေးပါ။$detail")
+                        val detail = if (foundLabels.isNotBlank()) " တွေ့တဲ့ app: $foundLabels" else " ဖုန်းထဲက Notes app ကို မတွေ့ပါ။"
+                        throw IllegalStateException("Notes app ကို မဖွင့်နိုင်သေးပါ။$detail")
                     }
                     val launch = pm.getLaunchIntentForPackage(noteApp.packageName)
-                        ?: throw IllegalStateException("Note app (${pm.getApplicationLabel(noteApp)}) အတွက် ဖွင့်ရန် launcher မရှိပါ။")
+                        ?: throw IllegalStateException("Notes app (${pm.getApplicationLabel(noteApp)}) အတွက် ဖွင့်ရန် launcher မရှိပါ။")
                     launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(launch)
                     Handler(Looper.getMainLooper()).postDelayed({
