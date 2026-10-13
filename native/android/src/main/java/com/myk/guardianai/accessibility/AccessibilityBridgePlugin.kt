@@ -1,6 +1,7 @@
 package com.myk.guardianai.accessibility
 
 import android.content.Intent
+import android.net.Uri
 import android.content.ComponentName
 import android.media.AudioManager
 import android.view.KeyEvent
@@ -216,6 +217,14 @@ class AccessibilityBridgePlugin : Plugin() {
                 "mediaNext" -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
                 "mediaPrevious" -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
                 "mediaPlayPause" -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                "searchYouTube" -> {
+                    val query = call.getString("text")?.trim().orEmpty()
+                    if (query.isEmpty()) throw IllegalArgumentException("ရှာဖွေမည့် သီချင်းအမည်နှင့် အဆိုတော်ကို ပေးပါ။")
+                    val url = "https://www.youtube.com/results?search_query=" + Uri.encode(query)
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    "YouTube မှာ “$query” ကို ရှာဖွေထားတဲ့ ရလဒ်စာမျက်နှာကို ဖွင့်လိုက်ပါပြီ။ သီချင်းဖွင့်ရန် မှန်ကန်တဲ့ရလဒ်ကို ရွေးပါ။"
+                }
                 "volumeUp" -> changeVolume(AudioManager.ADJUST_RAISE)
                 "volumeDown" -> changeVolume(AudioManager.ADJUST_LOWER)
                 "openSettings" -> {
