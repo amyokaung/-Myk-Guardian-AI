@@ -254,16 +254,46 @@ class AccessibilityBridgePlugin : Plugin() {
                     val noteText = call.getString("text")?.trim().orEmpty()
                     if (noteText.isEmpty()) throw IllegalArgumentException("မှတ်စုစာသား မပါပါ။")
                     val pm = context.packageManager
+                    // First try Android's standard create-note intent. Some Notes apps register it
+                    // even when their launcher label is localized or does not contain "Note".
+                    val createNote = Intent("android.intent.action.CREATE_NOTE")
+                        .putExtra(Intent.EXTRA_TEXT, noteText)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    val createNoteHandler = try { createNote.resolveActivity(pm) } catch (_: Exception) { null }
+                    if (createNoteHandler != null) {
+                        context.startActivity(createNote)
+                        val result = JSObject()
+                        result.put("success", true)
+                        result.put("message", "ဖုန်းရဲ့ Notes app ကို မှတ်စုစာသားနဲ့ ဖွင့်ပေးလိုက်ပါပြီ။ စာသားပါဝင်မှုကို စစ်ဆေးပါ။")
+                        call.resolve(result)
+                        return
+                    }
+
                     val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L)) else {
                         @Suppress("DEPRECATION")
                         pm.getInstalledApplications(0)
                     }
-                    val noteApp = apps.firstOrNull { info ->
+                    val noteKeywords = listOf("notes", "note", "notepad", "memo", "keep", "colornote", "color note", "quick memo", "notebook", "joplin", "evernote", "onenote", "မှတ်စု", "メモ", "笔记", "노트")
+                    val candidates = apps.filter { info ->
+                        if (info.packageName == context.packageName) false else {
+                            val label = pm.getApplicationLabel(info).toString().lowercase()
+                            val packageName = info.packageName.lowercase()
+                            noteKeywords.any { label.contains(it) || packageName.contains(it.replace(" ", "")) }
+                        }
+                    }.sortedBy { info ->
                         val label = pm.getApplicationLabel(info).toString().lowercase()
-                        info.packageName != context.packageName && listOf("notes", "note", "notepad", "memo", "keep notes", "color note", "quick memo", "notebook", "မှတ်စု").any { label.contains(it) }
-                    } ?: throw IllegalStateException("ဖုန်းထဲမှာ Notes/Notepad/Memo app မတွေ့ပါ။ Note app ကို တစ်ကြိမ်ဖွင့်ပြီး app အမည်ကို ပြောပေးပါ။")
-                    val launch = pm.getLaunchIntentForPackage(noteApp.packageName) ?: throw IllegalStateException("Note app ကို ဖွင့်မရပါ။")
-                    context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        if (label == "notes" || label == "note" || label == "notepad" || label == "memo" || label == "မှတ်စု") 0 else 1
+                    }
+                    val noteApp = candidates.firstOrNull { pm.getLaunchIntentForPackage(it.packageName) != null }
+                    if (noteApp == null) {
+                        val foundLabels = candidates.take(6).joinToString(", ") { pm.getApplicationLabel(it).toString() }
+                        val detail = if (foundLabels.isNotBlank()) " တွေ့တဲ့ app: $foundLabels" else " ဖုန်းထဲက Note app အမည်ကို မသိရသေးပါ။"
+                        throw IllegalStateException("Note app ကို မဖွင့်နိုင်သေးပါ။ Settings ထဲရှိ App အမည်အတိုင်း ပြောပေးပါ။$detail")
+                    }
+                    val launch = pm.getLaunchIntentForPackage(noteApp.packageName)
+                        ?: throw IllegalStateException("Note app (${pm.getApplicationLabel(noteApp)}) အတွက် ဖွင့်ရန် launcher မရှိပါ။")
+                    launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launch)
                     Handler(Looper.getMainLooper()).postDelayed({
                         val service = MyAccessibilityService.instance()
                         // Prefer the explicit New Note control so text is not accidentally placed in a search field.
