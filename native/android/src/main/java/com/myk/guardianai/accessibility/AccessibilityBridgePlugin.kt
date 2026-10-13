@@ -266,9 +266,9 @@ class AccessibilityBridgePlugin : Plugin() {
                     context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     Handler(Looper.getMainLooper()).postDelayed({
                         val service = MyAccessibilityService.instance()
-                        // Some note apps open directly into an editor; try typing before tapping New.
-                        var typed = service?.setText(noteText) == true
-                        val openedEditor = if (typed) true else service?.clickNewNoteAction() == true
+                        // Prefer the explicit New Note control so text is not accidentally placed in a search field.
+                        val openedEditor = service?.clickNewNoteAction() == true
+                        var typed = !openedEditor && service?.setText(noteText) == true
                         Handler(Looper.getMainLooper()).postDelayed({
                             typed = typed || MyAccessibilityService.instance()?.setText(noteText) == true
                             if (typed) {
