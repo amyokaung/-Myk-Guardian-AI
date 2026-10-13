@@ -1,11 +1,11 @@
 import { registerPlugin } from '@capacitor/core';
 
 type NativeResult = { success: boolean; message?: string };
-type AgentNative = { launchApp(options: { app: string }): Promise<NativeResult>; performAction(options: { action: string; text?: string; exact?: boolean }): Promise<NativeResult> };
+type AgentNative = { launchApp(options: { app: string }): Promise<NativeResult>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean }): Promise<NativeResult> };
 const Native = registerPlugin<AgentNative>('MykAccessibility');
 
 export async function executeAgentAction(name: string, args: Record<string, unknown> = {}): Promise<string> {
-  const allowed = new Set(['open_app', 'back', 'home', 'media_next', 'media_previous', 'media_play_pause', 'volume_up', 'volume_down', 'open_settings', 'click_text', 'search_youtube', 'open_phone', 'write_note', 'set_text']);
+  const allowed = new Set(['open_app', 'back', 'home', 'media_next', 'media_previous', 'media_play_pause', 'volume_up', 'volume_down', 'open_settings', 'click_text', 'search_youtube', 'open_phone', 'call_phone', 'write_note', 'set_text']);
   if (!allowed.has(name)) throw new Error('လုံခြုံရေးအတွက် မပံ့ပိုးထားသော action ကို ပိတ်ထားပါတယ်။');
   let result: NativeResult;
   if (name === 'open_app') {
@@ -13,12 +13,13 @@ export async function executeAgentAction(name: string, args: Record<string, unkn
     if (!app) throw new Error('ဖွင့်မည့် App အမည် မပါပါ။');
     result = await Native.launchApp({ app });
   } else {
-    const actionMap: Record<string, string> = { back: 'back', home: 'home', media_next: 'mediaNext', media_previous: 'mediaPrevious', media_play_pause: 'mediaPlayPause', volume_up: 'volumeUp', volume_down: 'volumeDown', open_settings: 'openSettings', click_text: 'clickText', search_youtube: 'searchYouTube', open_phone: 'openPhone', write_note: 'writeNote', set_text: 'setText' };
+    const actionMap: Record<string, string> = { back: 'back', home: 'home', media_next: 'mediaNext', media_previous: 'mediaPrevious', media_play_pause: 'mediaPlayPause', volume_up: 'volumeUp', volume_down: 'volumeDown', open_settings: 'openSettings', click_text: 'clickText', search_youtube: 'searchYouTube', open_phone: 'openPhone', call_phone: 'callPhone', write_note: 'writeNote', set_text: 'setText' };
     const text = name === 'search_youtube' ? (typeof args.query === 'string' ? args.query.trim() : '') : (typeof args.text === 'string' ? args.text.trim() : '');
+    const number = typeof args.number === 'string' ? args.number.trim() : '';
     if (name === 'click_text' && !text) throw new Error('နှိပ်မည့် စာသားကို text ဖြင့် ပေးပါ။');
     if (name === 'search_youtube' && !text) throw new Error('ရှာဖွေမည့် သီချင်းအမည်နှင့် အဆိုတော်ကို ပေးပါ။');
     if ((name === 'write_note' || name === 'set_text') && !text) throw new Error('ရေးမည့် စာသားကို ပေးပါ။');
-    result = await Native.performAction({ action: actionMap[name], ...(name === 'click_text' ? { text, exact: args.exact === true } : name === 'search_youtube' || name === 'write_note' || name === 'set_text' ? { text } : {}) });
+    result = await Native.performAction({ action: actionMap[name], ...(name === 'click_text' ? { text, exact: args.exact === true } : name === 'search_youtube' || name === 'write_note' || name === 'set_text' ? { text } : name === 'call_phone' && number ? { number } : {}) });
   }
   if (!result.success) throw new Error(result.message || 'Android action မအောင်မြင်ပါ။');
   return result.message || 'Android က action ကို လက်ခံပြီးပါပြီ။';
@@ -36,7 +37,11 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   if (/^\s*(home|go home|home button)\s*$|ပင်မစာမျက်နှာ|home ကိုသွား/.test(text)) return executeAgentAction('home');
   if (/\b(back|go back|press back|back button)\b|နောက်ပြန်|နောက်သို့ပြန်|ပြန်သွား/.test(text)) return executeAgentAction('back');
   if (/settings|ဆက်တင်/.test(text) && /ဖွင့်|open|သွား/.test(text)) return executeAgentAction('open_settings');
-  if (/(phone|dialer|ဖုန်းခေါ်|ဖုန်းခေါ်ဆို|ဖုန်းခေါ်တဲ့နေရာ)/i.test(text) && /(ဖွင့်|ဖွင့်|open|သွား)/i.test(text)) return executeAgentAction('open_phone');
+  const phoneNumber = command.match(/(?:\+?\d[\d\s().-]{5,}\d)/)?.[0]?.replace(/[\s().-]/g, '') || '';
+  if (/(ဖုန်းခေါ်|ဖုန်းခေါ်ဆို|ဖုန်းဆက်|call (?:him|her|them|this number|the number|someone)|make a call)/i.test(text)) {
+    return phoneNumber ? executeAgentAction('call_phone', { number: phoneNumber }) : executeAgentAction('open_phone');
+  }
+  if (/(phone|dialer|ဖုန်းခေါ်တဲ့နေရာ)/i.test(text) && /(ဖွင့်|ဖွင့်|open|သွား)/i.test(text)) return executeAgentAction('open_phone');
   const noteWrite = command.trim().match(/(?:note|notes|notepad|memo|မှတ်စု)(?:\s*app)?[\s\S]*?(?:ရေးပေး|ရေးပါ|ရေးထည့်|စာရေး)\s*[:：]?\s*["'“]?(.+?)["'”]?\s*$/i);
   if (noteWrite?.[1]) return executeAgentAction('write_note', { text: noteWrite[1].trim() });
   const burmeseClick = text.match(/^(.+?)(?:\s*ကို)?\s*(?:နှိပ်ပေး|နှိပ်ပါ|နှိပ်လိုက်|နှိပ်)\s*$/);
