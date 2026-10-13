@@ -22,7 +22,20 @@ let messages: Message[] = [
   { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
+const tabHistory: string[] = [];
 let busy = false;
+
+function navigateTab(nextTab: string) {
+  if (nextTab === activeTab) return;
+  tabHistory.push(activeTab);
+  activeTab = nextTab;
+  render();
+}
+
+function goBackInApp() {
+  activeTab = tabHistory.pop() || 'chat';
+  render();
+}
 
 function render() {
   const perms = readPerms();
@@ -49,11 +62,8 @@ function render() {
       <section id="view"></section>
     </main>
     <footer><span>MYK GUARDIAN AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => {
-    activeTab = b.dataset.tab!;
-    render();
-  }));
-  document.querySelector('#settingsShortcut')?.addEventListener('click', () => { activeTab = 'settings'; render(); });
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => navigateTab(b.dataset.tab!)));
+  document.querySelector('#settingsShortcut')?.addEventListener('click', () => navigateTab('settings'));
   const view = document.querySelector<HTMLElement>('#view')!;
   if (activeTab === 'chat') renderChat(view);
   if (activeTab === 'agent') renderAgent(view, perms);
@@ -174,7 +184,7 @@ function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
       <button class="action-card" id="agentNotifications"><span>🔔</span><b>Notification Access</b><small>Android OS Settings</small></button>
       <button class="action-card" id="agentLocation"><span>📍</span><b>Location စမ်းရန်</b><small>OS permission တောင်းရန်</small></button>
       <button class="action-card" id="agentMic"><span>🎙</span><b>Microphone စမ်းရန်</b><small>OS permission တောင်းရန်</small></button>
-      <button class="action-card" id="agentBack"><span>↩</span><b>Back Action</b><small>Android Global Back</small></button>
+      <button class="action-card" id="agentBack"><span>↩</span><b>Back Action</b><small>အရင်စာမျက်နှာသို့ ပြန်ရန်</small></button>
       <button class="action-card" id="agentRefresh"><span>⟳</span><b>အခြေအနေ ပြန်စစ်ရန်</b><small>Native status refresh</small></button>
     </div>
     <div class="card"><div class="card-title">OS Permission နှင့် Native Integration</div>
@@ -239,16 +249,16 @@ function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
     } catch (err) { resultLine.textContent = 'Microphone စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
     await refreshStatus();
   });
-  view.querySelector('#agentBack')?.addEventListener('click', async () => {
-    resultLine.textContent = 'Back action ကို Android Accessibility Service ထံ ပို့နေသည်…';
-    try {
-      const status = await MykNative.getStatus();
-      if (!status.accessibilityEnabled || !status.serviceConnected) {
-        resultLine.textContent = 'Back မလုပ်နိုင်ပါ။ Android Settings > Accessibility > Myk Guardian AI ကို Enable လုပ်ပြီး Off/On ပြန်လုပ်ပါ။'; return;
-      }
-      const result = await MykNative.performAction({ action: 'back' });
-      resultLine.textContent = result.success ? 'Android Global Back action ကို လက်ခံရရှိပါပြီ။ ဒီ app မှ ထွက်သွားနိုင်သည်။' : 'Back action မအောင်မြင်ပါ: ' + (result.message || 'Android rejected action');
-    } catch (err) { resultLine.textContent = 'Back action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+  view.querySelector('#agentBack')?.addEventListener('click', () => {
+    const hadPrevious = tabHistory.length > 0;
+    goBackInApp();
+    const nextView = document.querySelector<HTMLElement>('#view');
+    if (nextView && activeTab === 'chat' && !hadPrevious) {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = 'အရင်စာမျက်နှာ မရှိသေးသောကြောင့် Chat စာမျက်နှာသို့ ပြန်ထားပါသည်။';
+      nextView.appendChild(hint);
+    }
   });
   view.querySelector('#agentRefresh')?.addEventListener('click', () => { void refreshStatus(); });
   window.addEventListener('focus', () => { void refreshStatus(); });
@@ -265,7 +275,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       <div class="status-row"><div><b>⌘ Accessibility Service</b><small id="accessibilityStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableAccessibility">Settings ဖွင့်ရန်</button></div>
       <div class="status-row"><div><b>🔔 Notification Access</b><small id="notificationAccessStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableNotifications">Settings ဖွင့်ရန်</button></div>
       <div class="status-row"><div><b>နောက်ဆုံး Notification များ</b><small id="recentNotifications">ခွင့်ပြုထားမှသာ ဖတ်နိုင်သည်။ ဖုန်းထဲမှာပဲ သိမ်းထားသည်။</small></div><button class="secondary" id="readNotifications">ဖတ်ရန်</button></div>
-      <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small id="backTestStatus">Accessibility ကို Enable လုပ်ပြီးမှ အသုံးပြုနိုင်သည်။ စမ်းသပ်ရာတွင် လက်ရှိ app မှ ထွက်သွားနိုင်သည်။</small></div><button class="secondary" id="testBack">Back လုပ်ရန်</button></div>
+      <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small id="backTestStatus">Myk အတွင်းရှိ ယခင်စာမျက်နှာသို့ ပြန်သွားရန်</small></div><button class="secondary" id="testBack">Back လုပ်ရန်</button></div>
       <input id="filePicker" type="file" hidden>
     </div>
     <p class="hint">Location စမ်းသပ်ရာတွင် တည်နေရာကို ရယူပြီး screen ပေါ်တွင်သာ ပြမည်။ Microphone စမ်းသပ်ရာတွင် အသံကို မှတ်တမ်းမတင်ဘဲ ချက်ချင်းရပ်မည်။</p>`;
@@ -365,20 +375,8 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       button.disabled = false;
     }
   });
-  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
-    const statusLine = view.querySelector<HTMLElement>('#backTestStatus')!;
-    statusLine.textContent = 'Back action ကို Android Accessibility Service ထံ ပို့နေသည်…';
-    try {
-      const status = await MykNative.getStatus();
-      if (!status.accessibilityEnabled || !status.serviceConnected) {
-        statusLine.textContent = 'Back မလုပ်နိုင်ပါ။ Android Settings > Accessibility > Myk Guardian AI ကို Enable လုပ်ပြီး Off/On ပြန်လုပ်ပါ。';
-        return;
-      }
-      const result = await MykNative.performAction({ action: 'back' });
-      statusLine.textContent = result.success ? (result.message || 'Back action ပို့ပြီးပါပြီ။ App မပြောင်းပါက Myk ကို နောက်ခံသို့ ရွှေ့ပေးပါမည်။') : 'Back မအောင်မြင်ပါ: ' + (result.message || 'Android rejected action');
-    } catch (err) {
-      statusLine.textContent = 'Back မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-    }
+  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', () => {
+    goBackInApp();
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
   view.querySelector<HTMLButtonElement>('#chooseFile')!.addEventListener('click', () => picker.click());
