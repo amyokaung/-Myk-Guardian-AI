@@ -58,7 +58,8 @@ const requiredPermissions = [
   'android.permission.QUERY_ALL_PACKAGES',
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
-  'android.permission.RECORD_AUDIO'
+  'android.permission.RECORD_AUDIO',
+  'com.android.alarm.permission.SET_ALARM'
 ];
 for (const permission of requiredPermissions) {
   if (!manifest.includes(`android:name="${permission}"`)) {
