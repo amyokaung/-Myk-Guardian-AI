@@ -10,8 +10,9 @@ type AgentNative = {
 const Native = registerPlugin<AgentNative>('MykAccessibility');
 
 export async function executeAgentAction(name: string, args: Record<string, unknown> = {}): Promise<string> {
-  const allowed = new Set(['open_app', 'back', 'home', 'media_next', 'media_previous', 'media_play_pause', 'volume_up', 'volume_down', 'open_settings', 'click_text', 'search_youtube', 'open_phone', 'call_phone', 'write_note', 'set_text', 'search_places', 'set_alarm']);
+  const allowed = new Set(['get_location', 'open_app', 'back', 'home', 'media_next', 'media_previous', 'media_play_pause', 'volume_up', 'volume_down', 'open_settings', 'click_text', 'search_youtube', 'open_phone', 'call_phone', 'write_note', 'set_text', 'search_places', 'set_alarm']);
   if (!allowed.has(name)) throw new Error('လုံခြုံရေးအတွက် မပံ့ပိုးထားသော action ကို ပိတ်ထားပါတယ်။');
+  if (name === 'get_location') return currentLocationAnswer();
   let result: NativeResult;
   if (name === 'open_app') {
     const app = typeof args.app === 'string' ? args.app.trim() : '';
