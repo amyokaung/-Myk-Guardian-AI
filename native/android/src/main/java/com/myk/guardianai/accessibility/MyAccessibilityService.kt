@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
+import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.lang.ref.WeakReference
@@ -46,6 +47,59 @@ class MyAccessibilityService : AccessibilityService() {
         } finally {
             root.recycleSafely()
         }
+    }
+
+    fun setText(text: String): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return try {
+            val focused = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+            val target = focused ?: findEditable(root)
+            if (target == null) return false
+            try {
+                val args = Bundle().apply { putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text) }
+                target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+            } finally {
+                if (focused != null) focused.recycleSafely() else target.recycleSafely()
+            }
+        } finally { root.recycleSafely() }
+    }
+
+    fun clickNewNoteAction(): Boolean {
+        val labels = listOf("New note", "Add note", "Create note", "New", "Create", "Compose", "မှတ်စုအသစ်", "မှတ်စုရေး", "အသစ်", "ရေးသား")
+        return labels.any { clickText(it, exact = false) }
+    }
+
+    fun clickFirstYouTubeResult(): Boolean {
+        val root = rootInActiveWindow ?: return false
+        return try {
+            val candidates = mutableListOf<AccessibilityNodeInfo>()
+            collectYouTubeCandidates(root, candidates, 0)
+            try { candidates.firstOrNull()?.performAction(AccessibilityNodeInfo.ACTION_CLICK) ?: false }
+            finally { candidates.forEach { it.recycleSafely() } }
+        } finally { root.recycleSafely() }
+    }
+
+    private fun collectYouTubeCandidates(node: AccessibilityNodeInfo, out: MutableList<AccessibilityNodeInfo>, depth: Int) {
+        if (depth > 14) return
+        val label = listOfNotNull(node.text?.toString(), node.contentDescription?.toString()).joinToString(" ").lowercase()
+        val editable = node.isEditable || node.className?.toString()?.contains("EditText", ignoreCase = true) == true
+        val video = label.contains("video:") || label.contains("video ") || label.contains("ဗီဒီယို") || label.contains("play video")
+        if (!editable && video && node.isClickable && node.isVisibleToUser && node.isEnabled) out.add(AccessibilityNodeInfo.obtain(node))
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            try { collectYouTubeCandidates(child, out, depth + 1) } finally { child.recycleSafely() }
+        }
+    }
+
+    private fun findEditable(node: AccessibilityNodeInfo, depth: Int = 0): AccessibilityNodeInfo? {
+        if (depth > 14) return null
+        if (node.isEditable && node.isVisibleToUser && node.isEnabled) return AccessibilityNodeInfo.obtain(node)
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = try { findEditable(child, depth + 1) } finally { child.recycleSafely() }
+            if (found != null) return found
+        }
+        return null
     }
 
     private fun clickNodeOrParent(node: AccessibilityNodeInfo): Boolean {
