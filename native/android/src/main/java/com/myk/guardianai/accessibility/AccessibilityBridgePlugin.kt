@@ -231,9 +231,17 @@ class AccessibilityBridgePlugin : Plugin() {
                     }, 2600L)
                     return
                 }
-                "openPhone" -> {
-                    context.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    "ဖုန်းခေါ်ဆိုရန် Dialer ကို ဖွင့်လိုက်ပါပြီ။ ဖုန်းခေါ်ဆိုမှုကို မစတင်ရသေးပါ။"
+                "openPhone", "callPhone" -> {
+                    val number = call.getString("number")?.trim().orEmpty()
+                    val dialUri = if (number.isNotEmpty()) Uri.parse("tel:$number") else Uri.parse("tel:")
+                    val dialIntent = Intent(Intent.ACTION_DIAL, dialUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(dialIntent)
+                    } catch (firstError: Exception) {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, dialUri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                    if (number.isNotEmpty()) "ဖုန်းနံပါတ်ကို Dialer ထဲ ထည့်ပေးထားပါပြီ။ သင်ကိုယ်တိုင် Call ခလုတ်ကို နှိပ်မှသာ ခေါ်ဆိုပါမည်။"
+                    else "ဖုန်းခေါ်ရန် Dialer ကို ဖွင့်လိုက်ပါပြီ။ Contact သို့မဟုတ် နံပါတ်ကို ရွေးပြီး Call ကို ကိုယ်တိုင်နှိပ်ပါ။"
                 }
                 "setText" -> {
                     val text = call.getString("text")?.trim().orEmpty()
@@ -252,14 +260,17 @@ class AccessibilityBridgePlugin : Plugin() {
                     }
                     val noteApp = apps.firstOrNull { info ->
                         val label = pm.getApplicationLabel(info).toString().lowercase()
-                        info.packageName != context.packageName && listOf("notes", "note", "notepad", "memo", "မှတ်စု").any { label.contains(it) }
+                        info.packageName != context.packageName && listOf("notes", "note", "notepad", "memo", "keep notes", "color note", "quick memo", "notebook", "မှတ်စု").any { label.contains(it) }
                     } ?: throw IllegalStateException("ဖုန်းထဲမှာ Notes/Notepad/Memo app မတွေ့ပါ။ Note app ကို တစ်ကြိမ်ဖွင့်ပြီး app အမည်ကို ပြောပေးပါ။")
                     val launch = pm.getLaunchIntentForPackage(noteApp.packageName) ?: throw IllegalStateException("Note app ကို ဖွင့်မရပါ။")
                     context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     Handler(Looper.getMainLooper()).postDelayed({
-                        val openedEditor = MyAccessibilityService.instance()?.clickNewNoteAction() == true
+                        val service = MyAccessibilityService.instance()
+                        // Some note apps open directly into an editor; try typing before tapping New.
+                        var typed = service?.setText(noteText) == true
+                        val openedEditor = if (typed) true else service?.clickNewNoteAction() == true
                         Handler(Looper.getMainLooper()).postDelayed({
-                            val typed = MyAccessibilityService.instance()?.setText(noteText) == true
+                            typed = typed || MyAccessibilityService.instance()?.setText(noteText) == true
                             if (typed) {
                                 val result = JSObject()
                                 result.put("success", true)
@@ -269,7 +280,7 @@ class AccessibilityBridgePlugin : Plugin() {
                                 call.reject(if (!openedEditor) "Note app ကို ဖွင့်ထားပါတယ်၊ ဒါပေမဲ့ New note ခလုတ် သို့မဟုတ် စာရေးနိုင်တဲ့နေရာကို မတွေ့ပါ။" else "Note editor ကို ဖွင့်ထားပေမဲ့ စာသားထည့်မရပါ။")
                             }
                         }, 650L)
-                    }, 1200L)
+                    }, 1800L)
                     return
                 }
                 "volumeUp" -> changeVolume(AudioManager.ADJUST_RAISE)
