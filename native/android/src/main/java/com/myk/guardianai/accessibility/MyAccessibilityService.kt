@@ -33,20 +33,27 @@ class MyAccessibilityService : AccessibilityService() {
     fun clickText(searchText: String, exact: Boolean): Boolean {
         val root = rootInActiveWindow ?: return false
         return try {
-            val candidates = root.findAccessibilityNodeInfosByText(searchText).orEmpty()
-            val target = candidates.firstOrNull { node ->
-                val text = node.text?.toString()
-                val description = node.contentDescription?.toString()
-                val matches = listOfNotNull(text, description).any {
-                    if (exact) it.equals(searchText, ignoreCase = true)
-                    else it.contains(searchText, ignoreCase = true)
-                }
-                matches && node.isVisibleToUser && node.isEnabled
-            } ?: return false
-            clickNodeOrParent(target)
+            val target = findMatchingNode(root, searchText, exact, 0) ?: return false
+            try { clickNodeOrParent(target) } finally { target.recycleSafely() }
         } finally {
             root.recycleSafely()
         }
+    }
+
+    private fun findMatchingNode(node: AccessibilityNodeInfo, searchText: String, exact: Boolean, depth: Int): AccessibilityNodeInfo? {
+        if (depth > 18) return null
+        val labels = listOfNotNull(node.text?.toString(), node.contentDescription?.toString())
+        val matches = labels.any {
+            if (exact) it.equals(searchText, ignoreCase = true)
+            else it.contains(searchText, ignoreCase = true)
+        }
+        if (matches && node.isVisibleToUser && node.isEnabled) return AccessibilityNodeInfo.obtain(node)
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val found = try { findMatchingNode(child, searchText, exact, depth + 1) } finally { child.recycleSafely() }
+            if (found != null) return found
+        }
+        return null
     }
 
     fun setText(text: String): Boolean {
@@ -65,8 +72,25 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     fun clickNewNoteAction(): Boolean {
-        val labels = listOf("New note", "Add note", "Create note", "New", "Create", "Compose", "မှတ်စုအသစ်", "မှတ်စုရေး", "အသစ်", "ရေးသား")
-        return labels.any { clickText(it, exact = false) }
+        val labels = listOf("New note", "Add note", "Create note", "New", "Create", "Compose", "Add a note", "Create new", "Start writing", "Take a note", "New memo", "မှတ်စုအသစ်", "မှတ်စုရေး", "အသစ်", "ရေးသား", "မှတ်စုထည့်")
+        if (labels.any { clickText(it, exact = false) }) return true
+        val root = rootInActiveWindow ?: return false
+        return try { clickLikelyAddButton(root, 0) } finally { root.recycleSafely() }
+    }
+
+    private fun clickLikelyAddButton(node: AccessibilityNodeInfo, depth: Int): Boolean {
+        if (depth > 16) return false
+        val label = listOfNotNull(node.text?.toString(), node.contentDescription?.toString(), node.viewIdResourceName).joinToString(" ").lowercase()
+        val likelyAdd = listOf("add", "new", "create", "compose", "fab", "plus", "မှတ်စုအသစ်", "မှတ်စုထည့်").any { label.contains(it) }
+        if (likelyAdd && node.isClickable && node.isVisibleToUser && node.isEnabled) {
+            if (node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val clicked = try { clickLikelyAddButton(child, depth + 1) } finally { child.recycleSafely() }
+            if (clicked) return true
+        }
+        return false
     }
 
     fun clickFirstYouTubeResult(): Boolean {
