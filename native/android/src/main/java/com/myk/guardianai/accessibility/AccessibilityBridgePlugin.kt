@@ -221,9 +221,56 @@ class AccessibilityBridgePlugin : Plugin() {
                     val query = call.getString("text")?.trim().orEmpty()
                     if (query.isEmpty()) throw IllegalArgumentException("ရှာဖွေမည့် သီချင်းအမည်နှင့် အဆိုတော်ကို ပေးပါ။")
                     val url = "https://www.youtube.com/results?search_query=" + Uri.encode(query)
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                    "YouTube မှာ “$query” ကို ရှာဖွေထားတဲ့ ရလဒ်စာမျက်နှာကို ဖွင့်လိုက်ပါပြီ။ သီချင်းဖွင့်ရန် မှန်ကန်တဲ့ရလဒ်ကို ရွေးပါ။"
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val selected = MyAccessibilityService.instance()?.clickFirstYouTubeResult() == true
+                        val result = JSObject()
+                        result.put("success", true)
+                        result.put("message", if (selected) "YouTube ရှာဖွေမှုရလဒ်ထဲက ဗီဒီယိုတစ်ခုကို ရွေးပြီးပါပြီ။ Playback ကို စစ်ဆေးပါ။" else "YouTube မှာ “$query” ရလဒ်ကို ဖွင့်ထားပါတယ်။ UI ကို ဖတ်မရလို့ ဗီဒီယိုကို အလိုအလျောက် မရွေးနိုင်သေးပါ။")
+                        call.resolve(result)
+                    }, 2600L)
+                    return
+                }
+                "openPhone" -> {
+                    context.startActivity(Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    "ဖုန်းခေါ်ဆိုရန် Dialer ကို ဖွင့်လိုက်ပါပြီ။ ဖုန်းခေါ်ဆိုမှုကို မစတင်ရသေးပါ။"
+                }
+                "setText" -> {
+                    val text = call.getString("text")?.trim().orEmpty()
+                    if (text.isEmpty()) throw IllegalArgumentException("ရေးမည့် စာသား မပါပါ။")
+                    val service = MyAccessibilityService.instance() ?: throw IllegalStateException("စာသားထည့်ရန် Accessibility Service ဖွင့်ထားရပါမည်။")
+                    if (!service.setText(text)) throw IllegalStateException("လက်ရှိမျက်နှာပြင်မှာ စာရိုက်နိုင်တဲ့ input field မတွေ့ပါ။")
+                    "စာသားကို လက်ရှိ input field ထဲ ထည့်လိုက်ပါပြီ။"
+                }
+                "writeNote" -> {
+                    val noteText = call.getString("text")?.trim().orEmpty()
+                    if (noteText.isEmpty()) throw IllegalArgumentException("မှတ်စုစာသား မပါပါ။")
+                    val pm = context.packageManager
+                    val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L)) else {
+                        @Suppress("DEPRECATION")
+                        pm.getInstalledApplications(0)
+                    }
+                    val noteApp = apps.firstOrNull { info ->
+                        val label = pm.getApplicationLabel(info).toString().lowercase()
+                        info.packageName != context.packageName && listOf("notes", "note", "notepad", "memo", "မှတ်စု").any { label.contains(it) }
+                    } ?: throw IllegalStateException("ဖုန်းထဲမှာ Notes/Notepad/Memo app မတွေ့ပါ။ Note app ကို တစ်ကြိမ်ဖွင့်ပြီး app အမည်ကို ပြောပေးပါ။")
+                    val launch = pm.getLaunchIntentForPackage(noteApp.packageName) ?: throw IllegalStateException("Note app ကို ဖွင့်မရပါ။")
+                    context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val openedEditor = MyAccessibilityService.instance()?.clickNewNoteAction() == true
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            val typed = MyAccessibilityService.instance()?.setText(noteText) == true
+                            if (typed) {
+                                val result = JSObject()
+                                result.put("success", true)
+                                result.put("message", "Note app ထဲမှာ စာသားထည့်လိုက်ပါပြီ။ Auto-save ရှိမရှိကို Note app မှာ စစ်ပါ။")
+                                call.resolve(result)
+                            } else {
+                                call.reject(if (!openedEditor) "Note app ကို ဖွင့်ထားပါတယ်၊ ဒါပေမဲ့ New note ခလုတ် သို့မဟုတ် စာရေးနိုင်တဲ့နေရာကို မတွေ့ပါ။" else "Note editor ကို ဖွင့်ထားပေမဲ့ စာသားထည့်မရပါ။")
+                            }
+                        }, 650L)
+                    }, 1200L)
+                    return
                 }
                 "volumeUp" -> changeVolume(AudioManager.ADJUST_RAISE)
                 "volumeDown" -> changeVolume(AudioManager.ADJUST_LOWER)
