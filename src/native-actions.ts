@@ -114,7 +114,7 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   }
   // A direct location request uses the phone's live GPS, not the AI's guessed IP-based location.
   if (/(ငါ|ကျွန်တော်|ကျွန်မ|ကျွန်ုပ်|my|where am i|where am i now).*(ဘယ်ရောက်|ဘယ်မှာ|တည်နေရာ|location|နေရာ)|^(ဘယ်ရောက်နေလဲ|ငါဘယ်ရောက်နေလဲ|လက်ရှိတည်နေရာ|my location|where am i\??|where am i now\??)$/i.test(text) ||
-      /(လက်ရှိ|အခု|ယခု).*(တည်နေရာ|ဘယ်ရောက်|နေရာကိုပြ)|current location|show my location/i.test(text)) {
+      /(လက်ရှိ|အခု|ယခု).*(တည်နေရာ|ဘယ်ရောက်|နေရာကိုပြ)|current location|show my location|^(?:တည်နေရာ|တည်နေရာကိုပြော|location)$/i.test(text)) {
     return currentLocationAnswer();
   }
 
@@ -139,7 +139,7 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   }
 
   // Search a named destination in a map app. Generic "find a place" requests are left for clarification.
-  const wantsPlace = /(နေရာ|ဆေးရုံ|ဆေးခန်း|ဆိုင်|ဘုရား|စားသောက်ဆိုင်|ဟိုတယ်|လမ်းညွှန်|မြေပုံ|maps?|ရှာပေး|ဘယ်မှာရှိ|လမ်းပြ|navigate|directions|search for|find (?:a place|the place|nearby)|nearest|အနီးဆုံး)/i.test(text);
+  const wantsPlace = /(နေရာ|ဆေးရုံ|ဆေးခန်း|ဆိုင်|ဘုရား|စားသောက်ဆိုင်|ဟိုတယ်|လမ်းညွှန်|မြေပုံ|maps?|ရှာပေး|ဘယ်မှာရှိ|လမ်းပြ|သွားချင်|သွားမယ်|navigate|directions|go to|take me to|visit|search for|find (?:a place|the place|nearby)|nearest|အနီးဆုံး)/i.test(text);
   if (wantsPlace && !/(ငါဘယ်ရောက်|where am i|လက်ရှိတည်နေရာ|my location)/i.test(text)) {
     const query = placeQueryFromCommand(command);
     const genericOnly = /^(ငါသွားချင်တဲ့နေရာ|သွားချင်တဲ့နေရာ|နေရာကိုရှာပေး|နေရာရှာပေး|နေရာ|မြေပုံ|maps?)$/i.test(query);
