@@ -7,6 +7,9 @@ import android.media.AudioManager
 import android.view.KeyEvent
 import android.provider.Settings
 import android.content.pm.PackageManager
+import android.location.Geocoder
+import android.provider.AlarmClock
+import java.util.Locale
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -60,6 +63,33 @@ class AccessibilityBridgePlugin : Plugin() {
     @PluginMethod
     fun openNotificationSettings(call: PluginCall) {
         openSettings(call, Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+    }
+
+    @PluginMethod
+    fun reverseGeocode(call: PluginCall) {
+        val latitude = call.getDouble("latitude")
+        val longitude = call.getDouble("longitude")
+        if (latitude == null || longitude == null) {
+            call.reject("Latitude နဲ့ longitude လိုအပ်ပါတယ်။")
+            return
+        }
+        Thread {
+            val result = JSObject()
+            try {
+                val geocoder = Geocoder(context, Locale.getDefault())
+                @Suppress("DEPRECATION")
+                val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+                val address = addresses?.firstOrNull()
+                val line = address?.getAddressLine(0).orEmpty().ifBlank {
+                    listOfNotNull(address?.subLocality, address?.locality, address?.subAdminArea, address?.adminArea, address?.countryName)
+                        .distinct().joinToString(", ")
+                }
+                result.put("address", line)
+            } catch (_: Exception) {
+                result.put("address", "")
+            }
+            call.resolve(result)
+        }.start()
     }
 
     @PluginMethod
@@ -173,14 +203,22 @@ class AccessibilityBridgePlugin : Plugin() {
                 @Suppress("DEPRECATION")
                 pm.getInstalledApplications(0)
             }
-            val match = apps.firstOrNull { info ->
-                val label = pm.getApplicationLabel(info).toString()
-                label.equals(requested, ignoreCase = true) ||
-                    label.contains(requested, ignoreCase = true)
-            } ?: run {
-                call.reject("မတွေ့သော App: $requested")
-                return
-            }
+            val match = apps.asSequence()
+                .filter { info ->
+                    val label = pm.getApplicationLabel(info).toString()
+                    label.equals(requested, ignoreCase = true) || label.contains(requested, ignoreCase = true)
+                }
+                .sortedBy { info ->
+                    if (pm.getApplicationLabel(info).toString().equals(requested, ignoreCase = true)) 0 else 1
+                }
+                .firstOrNull { pm.getLaunchIntentForPackage(it.packageName) != null } ?: run {
+                    val found = apps.map { pm.getApplicationLabel(it).toString() }
+                        .filter { it.contains(requested, ignoreCase = true) }
+                        .take(5).joinToString(", ")
+                    val detail = if (found.isNotBlank()) " ဆင်တူအမည်များ: $found" else ""
+                    call.reject("ဖွင့်နိုင်သော App အမည် “$requested” ကို မတွေ့ပါ။$detail")
+                    return
+                }
             val intent = pm.getLaunchIntentForPackage(match.packageName)
             if (intent == null) {
                 call.reject("ဒီ App ကို ဖွင့်ရန် launch intent မရှိပါ။")
@@ -217,6 +255,38 @@ class AccessibilityBridgePlugin : Plugin() {
                 "mediaNext" -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
                 "mediaPrevious" -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
                 "mediaPlayPause" -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+                "searchPlaces" -> {
+                    val query = call.getString("text")?.trim().orEmpty()
+                    if (query.isEmpty()) throw IllegalArgumentException("ရှာဖွေမည့်နေရာအမည်ကို ပေးပါ။")
+                    val geo = Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(query)))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(geo)
+                    } catch (_: Exception) {
+                        val url = "https://www.google.com/maps/search/?api=1&query=" + Uri.encode(query)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                    "Maps မှာ “$query” ကို ရှာဖွေဖွင့်ပေးလိုက်ပါပြီ။ လမ်းကြောင်းစတင်ရန် Maps ထဲက Directions ကိုနှိပ်ပါ။"
+                }
+                "setAlarm" -> {
+                    val hour = call.getInt("hour") ?: throw IllegalArgumentException("Alarm နာရီ မပါပါ။")
+                    val minute = call.getInt("minute") ?: 0
+                    val label = call.getString("label")?.trim().orEmpty().ifBlank { "Myk Guardian AI" }
+                    if (hour !in 0..23 || minute !in 0..59) throw IllegalArgumentException("Alarm အချိန် မမှန်ပါ။")
+                    val alarm = Intent(AlarmClock.ACTION_SET_ALARM)
+                        .putExtra(AlarmClock.EXTRA_HOUR, hour)
+                        .putExtra(AlarmClock.EXTRA_MINUTES, minute)
+                        .putExtra(AlarmClock.EXTRA_MESSAGE, label)
+                        .putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(alarm)
+                    } catch (_: Exception) {
+                        alarm.putExtra(AlarmClock.EXTRA_SKIP_UI, false)
+                        context.startActivity(alarm)
+                    }
+                    "Android Clock သို့ ${String.format(Locale.getDefault(), "%02d:%02d", hour, minute)} Alarm သတ်မှတ်ရန် ပို့ပြီးပါပြီ။ Clock app ထဲမှာ Alarm သိမ်းထားကြောင်း စစ်ဆေးပါ။"
+                }
                 "searchYouTube" -> {
                     val query = call.getString("text")?.trim().orEmpty()
                     if (query.isEmpty()) throw IllegalArgumentException("ရှာဖွေမည့် သီချင်းအမည်နှင့် အဆိုတော်ကို ပေးပါ။")
