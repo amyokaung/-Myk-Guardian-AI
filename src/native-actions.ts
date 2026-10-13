@@ -99,8 +99,9 @@ function parseAlarmTime(command: string): { hour: number; minute: number } | nul
 function placeQueryFromCommand(command: string): string {
   return command.trim()
     .replace(/^(ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please|ငါ့ကို|ကျွန်တော့်ကို|ကျွန်မကို)\s*/i, '')
+    .replace(/^(?:go to|take me to|find|search for|navigate to|directions to)\s*/i, '')
     .replace(/^(?:google\s*)?maps?(?:\s*မှာ|\s+ထဲမှာ)?\s*/i, '')
-    .replace(/(?:ကို)?\s*(?:ရှာပေးပါ|ရှာပေး|ရှာပါ|ရှာပေးနော်|လမ်းညွှန်ပေးပါ|လမ်းညွှန်ပေး|သွားလမ်းပြပေး|ဘယ်မှာရှိလဲ|ဘယ်မှာရှိ|ဖွင့်ပေးပါ|ဖွင့်ပေး|ရှာ|find it|search for|navigate to|directions to)\s*[။.!?]*$/i, '')
+    .replace(/(?:ကို)?\s*(?:ရှာပေးပါ|ရှာပေး|ရှာပါ|ရှာပေးနော်|လမ်းညွှန်ပေးပါ|လမ်းညွှန်ပေး|သွားလမ်းပြပေး|ဘယ်မှာရှိလဲ|ဘယ်မှာရှိ|ဖွင့်ပေးပါ|ဖွင့်ပေး|ရှာ|သွားချင်တယ်|သွားချင်ပါတယ်|သွားမယ်|find it|search for|navigate to|directions to|go there|take me there)\s*[။.!?]*$/i, '')
     .replace(/^(?:ငါသွားချင်တဲ့နေရာ|သွားချင်တဲ့နေရာ|နေရာတစ်ခု|နေရာ)\s*/i, '')
     .trim();
 }
