@@ -36,6 +36,9 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   if (/^\s*(home|go home|home button)\s*$|ပင်မစာမျက်နှာ|home ကိုသွား/.test(text)) return executeAgentAction('home');
   if (/\b(back|go back|press back|back button)\b|နောက်ပြန်|နောက်သို့ပြန်|ပြန်သွား/.test(text)) return executeAgentAction('back');
   if (/settings|ဆက်တင်/.test(text) && /ဖွင့်|open|သွား/.test(text)) return executeAgentAction('open_settings');
+  if (/(phone|dialer|ဖုန်းခေါ်|ဖုန်းခေါ်ဆို|ဖုန်းခေါ်တဲ့နေရာ)/i.test(text) && /(ဖွင့်|ဖွင့်|open|သွား)/i.test(text)) return executeAgentAction('open_phone');
+  const noteWrite = command.trim().match(/(?:note|notes|notepad|memo|မှတ်စု)(?:\s*app)?[\s\S]*?(?:ရေးပေး|ရေးပါ|ရေးထည့်|စာရေး)\s*[:：]?\s*["'“]?(.+?)["'”]?\s*$/i);
+  if (noteWrite?.[1]) return executeAgentAction('write_note', { text: noteWrite[1].trim() });
   const burmeseClick = text.match(/^(.+?)(?:\s*ကို)?\s*(?:နှိပ်ပေး|နှိပ်ပါ|နှိပ်လိုက်|နှိပ်)\s*$/);
   const englishClick = text.match(/^\s*(?:click|tap)\s+["'“]?(.+?)["'”]?\s*$/);
   const clickTarget = (burmeseClick?.[1] || englishClick?.[1] || '').trim().replace(/["'“”]/g, '');
