@@ -124,7 +124,7 @@ async function getWeather(placeQuery = ''): Promise<string> {
   const tomorrowMax = Math.round(Number(data.daily.temperature_2m_max[1]));
   const tomorrowMin = Math.round(Number(data.daily.temperature_2m_min[1]));
   const tomorrowRain = data.daily.precipitation_probability_max?.[1];
-  return '🌦️ ' + placeLabel + ' ရဲ့ ရာသီဥတုကို ကြည့်ပေးထားတယ်နော်။\\n' +
+  return '🌦️ ' + placeLabel + ' ရဲ့ ရာသီဥတုကို ကြည့်ပေးထားတယ်နော်။\n' +
     weatherDescription(Number(current.weather_code)) + '\n' +
     '🌡️ အခုအပူချိန် ' + temp + '°C (ခံစားရနိုင်တဲ့အပူချိန် ' + feels + '°C)\\n' +
     '💧 စိုထိုင်းဆ ' + humidity + '% · 💨 လေတိုက်နှုန်း ' + wind + ' km/h\\n' +
