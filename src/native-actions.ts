@@ -10,8 +10,9 @@ type AgentNative = {
 const Native = registerPlugin<AgentNative>('MykAccessibility');
 
 export async function executeAgentAction(name: string, args: Record<string, unknown> = {}): Promise<string> {
-  const allowed = new Set(['get_location', 'open_app', 'back', 'home', 'media_next', 'media_previous', 'media_play_pause', 'volume_up', 'volume_down', 'open_settings', 'click_text', 'search_youtube', 'open_phone', 'call_phone', 'write_note', 'set_text', 'search_places', 'set_alarm']);
+  const allowed = new Set(['get_weather', 'get_location', 'open_app', 'back', 'home', 'media_next', 'media_previous', 'media_play_pause', 'volume_up', 'volume_down', 'open_settings', 'click_text', 'search_youtube', 'open_phone', 'call_phone', 'write_note', 'set_text', 'search_places', 'set_alarm']);
   if (!allowed.has(name)) throw new Error('လုံခြုံရေးအတွက် မပံ့ပိုးထားသော action ကို ပိတ်ထားပါတယ်။');
+  if (name === 'get_weather') return getWeather(typeof args.query === 'string' ? args.query.trim() : '');
   if (name === 'get_location') return currentLocationAnswer();
   let result: NativeResult;
   if (name === 'open_app') {
@@ -59,6 +60,77 @@ function calendarAnswer(offsetDays: number, label: string): string {
   const dateText = date.getFullYear() + ' ခုနှစ်၊ ' + (date.getMonth() + 1) + ' လ၊ ' + date.getDate() + ' ရက်';
   const emoji = offsetDays === 0 ? '☀️' : offsetDays > 0 ? '🌷' : '🍃';
   return emoji + ' ' + label + ' ' + weekday + 'နေ့ပါနော်။ (' + dateText + ')';
+}
+
+const weatherDescription = (code: number): string => {
+  if (code === 0) return 'ကောင်းကင်ကြည်လင်နေပါတယ် ☀️';
+  if ([1, 2, 3].includes(code)) return code === 1 ? 'တိမ်အနည်းငယ်ရှိပါတယ် 🌤️' : code === 2 ? 'တိမ်အသင့်အတင့်ရှိပါတယ် ⛅' : 'တိမ်ထူနေပါတယ် ☁️';
+  if ([45, 48].includes(code)) return 'မြူဆိုင်းနေပါတယ် 🌫️';
+  if ([51, 53, 55, 56, 57].includes(code)) return 'မိုးဖွဲဖွဲကျနိုင်ပါတယ် 🌦️';
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return 'မိုးရွာနေပါတယ် သို့မဟုတ် ရွာနိုင်ပါတယ် 🌧️';
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return 'နှင်းကျနေပါတယ် ❄️';
+  if ([95, 96, 99].includes(code)) return 'မိုးကြိုးမုန်တိုင်း ဖြစ်နိုင်ပါတယ် ⛈️';
+  return 'ရာသီဥတုအခြေအနေကို ဖော်ပြလို့မရသေးပါ။';
+};
+
+function weatherPlaceName(query: string): string {
+  const q = query.trim().toLowerCase();
+  const aliases: Array<[RegExp, string]> = [
+    [/ရန်ကုန်|yangon|rangoon/, 'Yangon'], [/မန္တလေး|mandalay/, 'Mandalay'],
+    [/နေပြည်တော်|naypyidaw|nay pyi taw/, 'Naypyidaw'], [/ပုဂံ|bagan|pagan/, 'Bagan'],
+    [/မော်လမြိုင်|mawlamyine|moulmein/, 'Mawlamyine'], [/တောင်ကြီး|taunggyi/, 'Taunggyi'],
+    [/ပြင်ဦးလွင်|pyin oo lwin/, 'Pyin Oo Lwin'], [/ပုသိမ်|pathein/, 'Pathein'],
+    [/လားရှိုး|lashio/, 'Lashio'], [/စစ်တွေ|sittwe/, 'Sittwe'], [/မြစ်ကြီးနား|myitkyina/, 'Myitkyina']
+  ];
+  for (const [pattern, name] of aliases) if (pattern.test(q)) return name;
+  return query.trim().replace(/(?:မှာ|တွင်|ရဲ့|၏)?\s*(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|rain|today|tomorrow|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|ဘယ်လိုရှိမလဲ|သိချင်တယ်|ပြောပြပါ|ပြောပြပေးပါ|ကြည့်ပေး|စစ်ပေး)\s*[။.!?]*$/ig, '').trim();
+}
+
+async function getWeather(placeQuery = ''): Promise<string> {
+  let latitude: number, longitude: number, placeLabel = '';
+  if (placeQuery) {
+    const place = weatherPlaceName(placeQuery);
+    const geoResponse = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=' + encodeURIComponent(place) + '&count=1&language=en&format=json');
+    if (!geoResponse.ok) throw new Error('နေရာအမည်ကို ရှာမရသေးပါ။ မြို့အမည်ကို ထပ်ပြောပေးပါနော်။');
+    const geo = await geoResponse.json();
+    const match = geo?.results?.[0];
+    if (!match) throw new Error('“' + placeQuery + '” ဆိုတဲ့နေရာကို မတွေ့ပါဘူး။ မြို့အမည်ကို မြန်မာလို ဒါမှမဟုတ် အင်္ဂလိပ်လို ပြောပေးပါနော်။');
+    latitude = Number(match.latitude); longitude = Number(match.longitude);
+    placeLabel = [match.name, match.admin1, match.country].filter(Boolean).join(', ');
+  } else {
+    let permission = await Geolocation.checkPermissions();
+    if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') permission = await Geolocation.requestPermissions();
+    if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') {
+      throw new Error('လက်ရှိနေရာရဲ့ ရာသီဥတုကို သိဖို့ Location ခွင့်ပြုချက်လိုပါတယ်နော်။ ဒါမှမဟုတ် မြို့အမည်ကို ပြောပေးလို့ရပါတယ်။');
+    }
+    const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 });
+    latitude = position.coords.latitude; longitude = position.coords.longitude;
+    placeLabel = 'သင့်လက်ရှိတည်နေရာ';
+  }
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + latitude + '&longitude=' + longitude + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=2&timezone=auto';
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('ရာသီဥတုအချက်အလက်ကို လောလောဆယ် မရနိုင်သေးပါ။ ခဏနေ ပြန်မေးပေးပါနော်။');
+  const data = await response.json();
+  const current = data?.current;
+  if (!current) throw new Error('ရာသီဥတုအချက်အလက် မပြည့်စုံသေးပါ။');
+  const temp = Math.round(Number(current.temperature_2m));
+  const feels = Math.round(Number(current.apparent_temperature));
+  const humidity = Math.round(Number(current.relative_humidity_2m));
+  const wind = Math.round(Number(current.wind_speed_10m));
+  const todayIndex = 0;
+  const max = Math.round(Number(data.daily.temperature_2m_max[todayIndex]));
+  const min = Math.round(Number(data.daily.temperature_2m_min[todayIndex]));
+  const rain = data.daily.precipitation_probability_max?.[todayIndex];
+  const tomorrowMax = Math.round(Number(data.daily.temperature_2m_max[1]));
+  const tomorrowMin = Math.round(Number(data.daily.temperature_2m_min[1]));
+  const tomorrowRain = data.daily.precipitation_probability_max?.[1];
+  return '🌦️ ' + placeLabel + ' ရဲ့ ရာသီဥတုကို ကြည့်ပေးထားတယ်နော်။\\n' +
+    weatherDescription(Number(current.weather_code)) + '\\n' +
+    '🌡️ အခုအပူချိန် ' + temp + '°C (ခံစားရနိုင်တဲ့အပူချိန် ' + feels + '°C)\\n' +
+    '💧 စိုထိုင်းဆ ' + humidity + '% · 💨 လေတိုက်နှုန်း ' + wind + ' km/h\\n' +
+    '📊 ဒီနေ့ ' + min + '°–' + max + '°C · မိုးရွာနိုင်ခြေ ' + (rain == null ? 'မသိရသေး' : rain + '%') + '\\n' +
+    '🌷 မနက်ဖြန် ' + tomorrowMin + '°–' + tomorrowMax + '°C · မိုးရွာနိုင်ခြေ ' + (tomorrowRain == null ? 'မသိရသေး' : tomorrowRain + '%') + '\\n' +
+    'အပြင်ထွက်မယ်ဆိုရင် ထီးလေးဆောင်သင့်မသင့် ဒီအချက်အလက်နဲ့ ဆုံးဖြတ်နိုင်ပါတယ်နော်။';
 }
 
 async function currentLocationAnswer(): Promise<string> {
@@ -113,6 +185,16 @@ function placeQueryFromCommand(command: string): string {
 
 export async function tryNativeCommand(command: string): Promise<string | null> {
   const text = toAsciiDigits(command.toLowerCase().trim());
+
+  // Live weather is fetched from a forecast service; use GPS unless a city is named.
+  if (/(ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)/i.test(text)) {
+    const place = command.trim()
+      .replace(/^(ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please|ငါ့ကို|ကျွန်တော့်?ကို|ကျွန်မကို)\\s*/i, '')
+      .replace(/(?:ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today)?\\s*(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)(?:ကို|က)?\\s*(?:ပြောပြပေးပါ|ပြောပြပါ|ပြောပေး|ကြည့်ပေး|စစ်ပေး|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|သိချင်တယ်)?\\s*[။.!?]*$/i, '')
+      .replace(/(?:မှာ|ရဲ့|၏)\\s*$/,'').trim();
+    const isGeneric = /^(ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today|ရာသီဥတု|မိုးလေဝသ|အပူချိန်|weather|forecast|မိုးရွာမလား|မိုးရွာနိုင်လား)$/i.test(place);
+    return executeAgentAction('get_weather', { query: isGeneric ? '' : place });
+  }
 
   // Answer relative-day questions deterministically from the phone's local calendar.
   // Check longer offsets first so "သန်ဘက်ခါ" is never mistaken for "မနက်ဖြန်".
