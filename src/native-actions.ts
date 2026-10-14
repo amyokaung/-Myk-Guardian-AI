@@ -127,8 +127,8 @@ async function getWeather(placeQuery = ''): Promise<string> {
   const tomorrowRain = data.daily.precipitation_probability_max?.[1];
   return '🌦️ ' + placeLabel + ' ရဲ့ ရာသီဥတုကို ကြည့်ပေးထားတယ်နော်။\n' +
     weatherDescription(Number(current.weather_code)) + '\n' +
-    '🌡️ အခုအပူချိန် ' + temp + '°C (ခံစားရနိုင်တဲ့အပူချိန် ' + feels + '°C)\\n' +
-    '💧 စိုထိုင်းဆ ' + humidity + '% · 💨 လေတိုက်နှုန်း ' + wind + ' km/h\\n' +
+    '🌡️ အခုအပူချိန် ' + temp + '°C (ခံစားရနိုင်တဲ့အပူချိန် ' + feels + '°C)\n' +
+    '💧 စိုထိုင်းဆ ' + humidity + '% · 💨 လေတိုက်နှုန်း ' + wind + ' km/h\n' +
     '📊 ဒီနေ့ ' + min + '°–' + max + '°C · မိုးရွာနိုင်ခြေ ' + (rain == null ? 'မသိရသေး' : rain + '%') + '\n' +
     '🌷 မနက်ဖြန် ' + tomorrowMin + '°–' + tomorrowMax + '°C · မိုးရွာနိုင်ခြေ ' + (tomorrowRain == null ? 'မသိရသေး' : tomorrowRain + '%') + '\n' +
     'အပြင်ထွက်မယ်ဆိုရင် ထီးလေးဆောင်သင့်မသင့် ဒီအချက်အလက်နဲ့ ဆုံးဖြတ်နိုင်ပါတယ်နော်။';
