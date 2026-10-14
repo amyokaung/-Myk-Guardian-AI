@@ -50,10 +50,15 @@ export async function executeAgentAction(name: string, args: Record<string, unkn
 
 const toAsciiDigits = (value: string) => value.replace(/[၀-၉]/g, d => String('၀၁၂၃၄၅၆၇၈၉'.indexOf(d)));
 const weekdayMyanmar = ['တနင်္ဂနွေ', 'တနင်္လာ', 'အင်္ဂါ', 'ဗုဒ္ဓဟူး', 'ကြာသပတေး', 'သောကြာ', 'စနေ'];
-function todayAnswer(): string {
-  const now = new Date();
-  return 'ဒီနေ့ ' + weekdayMyanmar[now.getDay()] + 'နေ့ပါ။ (' +
-    now.getFullYear() + ' ခုနှစ်၊ ' + (now.getMonth() + 1) + ' လ၊ ' + now.getDate() + ' ရက်)';
+function calendarAnswer(offsetDays: number, label: string): string {
+  // Calculate from the device's local calendar; never ask an LLM to guess weekdays.
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + offsetDays);
+  const weekday = weekdayMyanmar[date.getDay()];
+  const dateText = date.getFullYear() + ' ခုနှစ်၊ ' + (date.getMonth() + 1) + ' လ၊ ' + date.getDate() + ' ရက်';
+  const emoji = offsetDays === 0 ? '☀️' : offsetDays > 0 ? '🌷' : '🍃';
+  return emoji + ' ' + label + ' ' + weekday + 'နေ့ပါနော်။ (' + dateText + ')';
 }
 
 async function currentLocationAnswer(): Promise<string> {
@@ -109,10 +114,16 @@ function placeQueryFromCommand(command: string): string {
 export async function tryNativeCommand(command: string): Promise<string | null> {
   const text = toAsciiDigits(command.toLowerCase().trim());
 
-  // Answer calendar questions from the phone's own local date, without needing an API key or network.
-  if (/(ဒီနေ့|ယနေ့|ဒီနေ့က|today).*(ဘာနေ့|ဘယ်နေ့|နေ့လဲ|what day|day is it)|^(ဘာနေ့လဲ|ဒီနေ့ဘာနေ့လဲ|what day is it today\??)$/i.test(text)) {
-    return todayAnswer();
+  // Answer relative-day questions deterministically from the phone's local calendar.
+  // Check longer offsets first so "သန်ဘက်ခါ" is never mistaken for "မနက်ဖြန်".
+  const asksDay = /(ဘာနေ့|ဘယ်နေ့|နေ့လဲ|နေ့ဖြစ်မလဲ|what day|day is it|what weekday|which day)/i.test(text);
+  if (asksDay) {
+    if (/(သန်ဘက်ခါ|သဘက်ခါ|တဘက်ခါ|day after tomorrow)/i.test(text)) return calendarAnswer(2, 'သန်ဘက်ခါက');
+    if (/(မနက်ဖြန်|နက်ဖြန်|မနက်ဖန်|tomorrow|tmrw)/i.test(text)) return calendarAnswer(1, 'မနက်ဖြန်က');
+    if (/(မနေ့က|မနေ့|yesterday)/i.test(text)) return calendarAnswer(-1, 'မနေ့က');
+    if (/(ဒီနေ့|ယနေ့|ဒီနေ့က|today|နေ့ရက်)/i.test(text) || /^(ဘာနေ့လဲ|ဘယ်နေ့လဲ|what day is it\??)$/i.test(text)) return calendarAnswer(0, 'ဒီနေ့က');
   }
+
   // A direct location request uses the phone's live GPS, not the AI's guessed IP-based location.
   if (/(ငါ|ကျွန်တော်|ကျွန်မ|ကျွန်ုပ်|my|where am i|where am i now).*(ဘယ်ရောက်|ဘယ်မှာ|တည်နေရာ|location|နေရာ)|^(ဘယ်ရောက်နေလဲ|ငါဘယ်ရောက်နေလဲ|လက်ရှိတည်နေရာ|my location|where am i\??|where am i now\??)$/i.test(text) ||
       /(လက်ရှိ|အခု|ယခု).*(တည်နေရာ|ဘယ်ရောက်|နေရာကိုပြ)|current location|show my location|^(?:တည်နေရာ|တည်နေရာကိုပြော|location)$/i.test(text)) {
