@@ -188,15 +188,15 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   const text = toAsciiDigits(command.toLowerCase().trim());
 
   // Opening a weather app is an app-launch request, not a forecast request.
-  if (/(ရာသီဥတု|မိုးလေဝသ|weather)\\s*(?:app|အက်ပ်)?\\s*(?:ကို\\s*)?(?:ဖွင့်ပါ?|ဖွင့်ပေးပါ?|ဖွင့်ပါ?|ဖွင့်ပေးပါ?|ဖွင့္ပါ?|open|launch)/i.test(text) ||
-      /(?:open|launch)\\s+(?:the\\s+)?(?:weather|ရာသီဥတု)(?:\\s+app)?/i.test(text)) {
+  if (/(ရာသီဥတု|မိုးလေဝသ|weather)\s*(?:app|အက်ပ်)?\s*(?:ကို\s*)?(?:ဖွင့်ပါ?|ဖွင့်ပေးပါ?|ဖွင့်ပါ?|ဖွင့်ပေးပါ?|ဖွင့္ပါ?|ဖွင့်|ဖွင့်|open|launch)/i.test(text) ||
+      /(?:open|launch)\s+(?:the\s+)?(?:weather|ရာသီဥတု)(?:\s+app)?/i.test(text)) {
     return executeAgentAction('open_app', { app: 'Weather' });
   }
 
   // Resolve weather questions locally. Extract a known place; otherwise use GPS instead of
   // misreading leftover question words such as "ဘယ်လိုနေလဲ" as a city name.
   if (/(ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|မိုးရွာနေ|မိုးတိတ်|weather|forecast|temperature|will it rain|is it raining|rain today)/i.test(text)) {
-    const cityMatch = command.match(/ရန်ကုန်|yangon|rangoon|မန္တလေး|mandalay|နေပြည်တော်|naypyidaw|nay pyi taw|ပုဂံ|bagan|pagan|မော်လမြိုင်|mawlamyine|moulmein|တောင်ကြီး|taunggyi|ပြင်ဦးလွင်|pyin oo lwin|ပုသိမ်|pathein|လားရှိုး|lashio|စစ်တွေ|sittwe|မြစ်ကြီးနား|myitkyina|လှိုင်|လိူင်|hlaing(?:\\s+township)?/i);
+    const cityMatch = command.match(/ရန်ကုန်|yangon|rangoon|မန္တလေး|mandalay|နေပြည်တော်|naypyidaw|nay pyi taw|ပုဂံ|bagan|pagan|မော်လမြိုင်|mawlamyine|moulmein|တောင်ကြီး|taunggyi|ပြင်ဦးလွင်|pyin oo lwin|ပုသိမ်|pathein|လားရှိုး|lashio|စစ်တွေ|sittwe|မြစ်ကြီးနား|myitkyina|လှိုင်|လိူင်|hlaing(?:\s+township)?/i);
     const query = cityMatch ? cityMatch[0] : '';
     return executeAgentAction('get_weather', { query });
   }
