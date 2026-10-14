@@ -19,7 +19,7 @@ const readPerms = (): Record<string, boolean> => {
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let messages: Message[] = [
-  { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
+  { role: 'assistant', content: 'ဟယ်လိုနော် 🌷 Myk ပါ။ မြန်မာလိုပဲ အေးအေးဆေးဆေး ပြောလို့ရတယ်နော်။ စကားပြောတာဖြစ်ဖြစ်၊ ဖုန်းထဲက အလုပ်တွေခိုင်းတာဖြစ်ဖြစ် အတူတူလုပ်ကြမယ် ✨' }
 ];
 let activeTab = 'chat';
 const tabHistory: string[] = [];
@@ -106,7 +106,7 @@ function renderChat(view: HTMLElement) {
         busy = false; render(); return;
       }
     } catch (err) {
-      messages.push({ role: 'assistant', content: 'လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။') });
+      messages.push({ role: 'assistant', content: 'အို… ဒီတစ်ခါတော့ မလုပ်နိုင်သေးဘူးနော် 😕 ' + (err instanceof Error ? err.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။') });
       busy = false; render(); return;
     }
     await askAI();
