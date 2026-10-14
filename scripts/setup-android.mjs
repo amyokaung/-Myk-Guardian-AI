@@ -97,11 +97,13 @@ const serviceDeclarations = `
             </intent-filter>
         </service>`;
 if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService') ||
-    !manifest.includes('com.myk.guardianai.accessibility.MyNotificationListenerService')) {
+    !manifest.includes('com.myk.guardianai.accessibility.MyNotificationListenerService') ||
+    !manifest.includes('com.myk.guardianai.accessibility.VedariWakeService')) {
   const declarations = serviceDeclarations
-    .split('</service>').filter(Boolean).map(part => part.trim() + '</service>').filter(part =>
-      !manifest.includes(part.includes('MyAccessibilityService') ? 'com.myk.guardianai.accessibility.MyAccessibilityService' : 'com.myk.guardianai.accessibility.MyNotificationListenerService')
-    ).join('\n        ');
+    .split('</service>').filter(Boolean).map(part => part.trim() + '</service>').filter(part => {
+      const match = part.match(/android:name="([^"]+)"/);
+      return match != null && !manifest.includes(match[1]);
+    }).join('\n        ');
   const closeIndex = manifest.lastIndexOf('</application>');
   if (closeIndex < 0) throw new Error('AndroidManifest.xml has no closing application element.');
   manifest = manifest.slice(0, closeIndex) + declarations + '\n    ' + manifest.slice(closeIndex);
