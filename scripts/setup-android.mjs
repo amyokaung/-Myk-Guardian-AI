@@ -39,7 +39,7 @@ if (!gradle.includes('org.jetbrains.kotlin.android') && !gradle.includes('kotlin
 const sourceRoot = path.join(root, 'native/android/src/main');
 const packagePath = path.join(appMain, 'java/com/myk/guardianai/accessibility');
 fs.mkdirSync(packagePath, { recursive: true });
-for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt']) {
+for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt', 'VedariWakeService.kt']) {
   fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility', name), path.join(packagePath, name));
 }
 for (const [from, to] of [
@@ -59,6 +59,9 @@ const requiredPermissions = [
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.RECORD_AUDIO',
+  'android.permission.FOREGROUND_SERVICE',
+  'android.permission.FOREGROUND_SERVICE_MICROPHONE',
+  'android.permission.WAKE_LOCK',
   'com.android.alarm.permission.SET_ALARM'
 ];
 for (const permission of requiredPermissions) {
@@ -79,6 +82,11 @@ const serviceDeclarations = `
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+        <service
+            android:name="com.myk.guardianai.accessibility.VedariWakeService"
+            android:label="Vedari Voice Assistant"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
         <service
             android:name="com.myk.guardianai.accessibility.MyNotificationListenerService"
             android:label="Myk Guardian AI Notification Access"
