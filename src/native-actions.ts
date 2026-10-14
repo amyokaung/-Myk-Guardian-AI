@@ -81,7 +81,7 @@ function weatherPlaceName(query: string): string {
     [/မော်လမြိုင်|mawlamyine|moulmein/, 'Mawlamyine'], [/တောင်ကြီး|taunggyi/, 'Taunggyi'],
     [/ပြင်ဦးလွင်|pyin oo lwin/, 'Pyin Oo Lwin'], [/ပုသိမ်|pathein/, 'Pathein'],
     [/လားရှိုး|lashio/, 'Lashio'], [/စစ်တွေ|sittwe/, 'Sittwe'], [/မြစ်ကြီးနား|myitkyina/, 'Myitkyina'],
-    [/လှိုင်|လိူင်|hlaing(?: township)?/i, 'Hlaing Township, Yangon']
+    [/လှိုင်|လိူင်|hlaing(?: township)?/i, 'Yangon']
   ];
   for (const [pattern, name] of aliases) if (pattern.test(q)) return name;
   return query.trim().replace(/(?:မှာ|တွင်|ရဲ့|၏)?\s*(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|rain|today|tomorrow|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|ဘယ်လိုရှိမလဲ|သိချင်တယ်|ပြောပြပါ|ပြောပြပေးပါ|ကြည့်ပေး|စစ်ပေး)\s*[။.!?]*$/ig, '').trim();
@@ -188,7 +188,7 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   const text = toAsciiDigits(command.toLowerCase().trim());
 
   // Opening a weather app is an app-launch request, not a forecast request.
-  if (/(ရာသီဥတု|မိုးလေဝသ|weather)\\s*(?:app|အက်ပ်)?\\s*(?:ကို\\s*)?(?:ဖွင့်|ဖွင့္|ဖွင့်ပေး|ဖွင့်ပေး|open|launch)/i.test(text) ||
+  if (/(ရာသီဥတု|မိုးလေဝသ|weather)\\s*(?:app|အက်ပ်)?\\s*(?:ကို\\s*)?(?:ဖွင့်ပါ?|ဖွင့်ပေးပါ?|ဖွင့်ပါ?|ဖွင့်ပေးပါ?|ဖွင့္ပါ?|open|launch)/i.test(text) ||
       /(?:open|launch)\\s+(?:the\\s+)?(?:weather|ရာသီဥတု)(?:\\s+app)?/i.test(text)) {
     return executeAgentAction('open_app', { app: 'Weather' });
   }
