@@ -108,6 +108,56 @@ class AccessibilityBridgePlugin : Plugin() {
         call.resolve(result)
     }
 
+    @PluginMethod
+    fun startVedariWakeListening(call: PluginCall) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            call.reject("Wake word နားထောင်ရန် Microphone permission လိုအပ်ပါတယ်။ အရင် Allow လုပ်ပါ။")
+            return
+        }
+        try {
+            context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean(VedariWakeService.ENABLED, true).apply()
+            val intent = Intent(context, VedariWakeService::class.java).setAction(VedariWakeService.ACTION_START)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+            else context.startService(intent)
+            val result = JSObject()
+            result.put("success", true)
+            result.put("message", "ဗေဒါရီ Wake Word နားထောင်မှု စတင်လိုက်ပါပြီ။ Notification မှာ Stop လုပ်နိုင်ပါတယ်။")
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("Wake Word စတင်မရပါ: ${error.message}", error)
+        }
+    }
+
+    @PluginMethod
+    fun stopVedariWakeListening(call: PluginCall) {
+        try {
+            context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean(VedariWakeService.ENABLED, false).apply()
+            context.startService(Intent(context, VedariWakeService::class.java).setAction(VedariWakeService.ACTION_STOP))
+            val result = JSObject()
+            result.put("success", true)
+            result.put("message", "ဗေဒါရီ Wake Word နားထောင်မှု ရပ်လိုက်ပါပြီ။")
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("Wake Word ရပ်မရပါ: ${error.message}", error)
+        }
+    }
+
+    @PluginMethod
+    fun getPendingWakeCommand(call: PluginCall) {
+        val prefs = context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
+        val command = prefs.getString(VedariWakeService.PENDING_COMMAND, "").orEmpty()
+        val at = prefs.getLong(VedariWakeService.PENDING_AT, 0L)
+        val fresh = command.isNotBlank() && System.currentTimeMillis() - at < 60_000L
+        if (fresh) prefs.edit().remove(VedariWakeService.PENDING_COMMAND).remove(VedariWakeService.PENDING_AT).apply()
+        val result = JSObject()
+        result.put("command", if (fresh) command else "")
+        result.put("listening", prefs.getBoolean(VedariWakeService.ENABLED, false))
+        call.resolve(result)
+    }
+
     private fun openSettings(call: PluginCall, action: String, extra: String? = null, value: String? = null) {
         try {
             val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
