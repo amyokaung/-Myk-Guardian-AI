@@ -6,7 +6,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -417,8 +417,49 @@ function renderSettings(view: HTMLElement) {
       <button class="secondary wide" id="showGeminiKey">Gemini Key ပြ/ဖျောက်</button>
       <button class="danger wide" id="deleteKeys">API Key နှစ်ခုလုံး ဖျက်မယ်</button>
     </div>
+    <div class="card">
+      <div class="card-title">🎙 ဗေဒါရီ Voice Assistant · Wake Word</div>
+      <p class="muted">“ဗေဒါရီရေ၊ …” လို့ခေါ်ပြီး ဖုန်းမျက်နှာပြင်ပိတ်နေချိန်မှာပါ နားထောင်နိုင်ရန် Android foreground microphone service ကို ကိုယ်တိုင်ဖွင့်ပါ။ နားထောင်နေစဉ် Notification အမြဲပြမည်။ Stop လုပ်ရန် ဒီနေရာ သို့မဟုတ် Notification ကို အသုံးပြုပါ။</p>
+      <p class="muted"><b>သိထားရန်:</b> ဒီအဆင့်က Wake Word ကိုသာ ရှာဖွေသည်။ ကိုယ့်အသံဟုတ်မဟုတ် အတည်ပြုသည့် Voice ID မပါသေးပါ။ Android/Google Speech Recognition ရရှိနိုင်မှု၊ အင်တာနက်နှင့် ဖုန်းထုတ်လုပ်သူ၏ background ကန့်သတ်ချက်များအပေါ် မူတည်သည်။ Lock PIN/လက်ဗွေကို ကျော်မဖြေပါ။</p>
+      <div class="status-row"><div><b>Wake Word နားထောင်မှု</b><small id="vedariWakeStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><span class="state" id="vedariWakeState">CHECKING</span></div>
+      <button class="primary wide" id="startVedariWake">ဗေဒါရီ နားထောင်မှု စတင်ရန်</button>
+      <button class="secondary wide" id="stopVedariWake">နားထောင်မှု ရပ်ရန်</button>
+    </div>
     <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
     <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
+  const wakeStatus = view.querySelector<HTMLElement>('#vedariWakeStatus')!;
+  const wakeState = view.querySelector<HTMLElement>('#vedariWakeState')!;
+  const refreshWakeStatus = async () => {
+    try {
+      const status = await MykNative.getPendingWakeCommand();
+      wakeState.textContent = status.listening ? 'LISTENING' : 'STOPPED';
+      wakeState.classList.toggle('enabled', status.listening);
+      wakeStatus.textContent = status.listening ? 'Foreground service အလုပ်လုပ်နေသည်။ Notification ကိုလည်း စစ်ပါ။' : 'နားထောင်မှု ပိတ်ထားသည်။';
+    } catch (err) {
+      wakeState.textContent = 'UNAVAILABLE';
+      wakeState.classList.remove('enabled');
+      wakeStatus.textContent = 'Native service မရပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
+  };
+  view.querySelector<HTMLButtonElement>('#startVedariWake')!.addEventListener('click', async () => {
+    try {
+      const result = await MykNative.startVedariWakeListening();
+      wakeStatus.textContent = result.message || 'Wake Word နားထောင်မှု စတင်လိုက်ပါပြီ။';
+    } catch (err) {
+      wakeStatus.textContent = 'မစတင်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'Microphone permission ကို စစ်ပါ။');
+    }
+    await refreshWakeStatus();
+  });
+  view.querySelector<HTMLButtonElement>('#stopVedariWake')!.addEventListener('click', async () => {
+    try {
+      const result = await MykNative.stopVedariWakeListening();
+      wakeStatus.textContent = result.message || 'နားထောင်မှု ရပ်လိုက်ပါပြီ။';
+    } catch (err) {
+      wakeStatus.textContent = 'မရပ်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
+    await refreshWakeStatus();
+  });
+  void refreshWakeStatus();
   view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
@@ -443,4 +484,29 @@ function renderSettings(view: HTMLElement) {
   });
 }
 
+let consumingWakeCommand = false;
+async function consumeVedariWakeCommand() {
+  if (consumingWakeCommand) return;
+  consumingWakeCommand = true;
+  try {
+    const pending = await MykNative.getPendingWakeCommand();
+    const command = pending.command?.trim();
+    if (command) {
+      navigateTab('chat');
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLTextAreaElement>('#prompt');
+        const form = document.querySelector<HTMLFormElement>('#chatForm');
+        if (input && form && !busy) {
+          input.value = command;
+          form.requestSubmit();
+        }
+      }, 180);
+    }
+  } catch { /* Web-only preview has no native wake service. */ }
+  finally { consumingWakeCommand = false; }
+}
+window.addEventListener('focus', () => { void consumeVedariWakeCommand(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void consumeVedariWakeCommand(); });
+
 render();
+window.setTimeout(() => { void consumeVedariWakeCommand(); }, 500);
