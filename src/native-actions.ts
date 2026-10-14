@@ -125,11 +125,11 @@ async function getWeather(placeQuery = ''): Promise<string> {
   const tomorrowMin = Math.round(Number(data.daily.temperature_2m_min[1]));
   const tomorrowRain = data.daily.precipitation_probability_max?.[1];
   return '🌦️ ' + placeLabel + ' ရဲ့ ရာသီဥတုကို ကြည့်ပေးထားတယ်နော်။\\n' +
-    weatherDescription(Number(current.weather_code)) + '\\n' +
+    weatherDescription(Number(current.weather_code)) + '\n' +
     '🌡️ အခုအပူချိန် ' + temp + '°C (ခံစားရနိုင်တဲ့အပူချိန် ' + feels + '°C)\\n' +
     '💧 စိုထိုင်းဆ ' + humidity + '% · 💨 လေတိုက်နှုန်း ' + wind + ' km/h\\n' +
-    '📊 ဒီနေ့ ' + min + '°–' + max + '°C · မိုးရွာနိုင်ခြေ ' + (rain == null ? 'မသိရသေး' : rain + '%') + '\\n' +
-    '🌷 မနက်ဖြန် ' + tomorrowMin + '°–' + tomorrowMax + '°C · မိုးရွာနိုင်ခြေ ' + (tomorrowRain == null ? 'မသိရသေး' : tomorrowRain + '%') + '\\n' +
+    '📊 ဒီနေ့ ' + min + '°–' + max + '°C · မိုးရွာနိုင်ခြေ ' + (rain == null ? 'မသိရသေး' : rain + '%') + '\n' +
+    '🌷 မနက်ဖြန် ' + tomorrowMin + '°–' + tomorrowMax + '°C · မိုးရွာနိုင်ခြေ ' + (tomorrowRain == null ? 'မသိရသေး' : tomorrowRain + '%') + '\n' +
     'အပြင်ထွက်မယ်ဆိုရင် ထီးလေးဆောင်သင့်မသင့် ဒီအချက်အလက်နဲ့ ဆုံးဖြတ်နိုင်ပါတယ်နော်။';
 }
 
@@ -186,14 +186,19 @@ function placeQueryFromCommand(command: string): string {
 export async function tryNativeCommand(command: string): Promise<string | null> {
   const text = toAsciiDigits(command.toLowerCase().trim());
 
-  // Live weather is fetched from a forecast service; use GPS unless a city is named.
-  if (/(ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)/i.test(text)) {
-    const place = command.trim()
+  // Resolve weather commands locally so the model cannot skip the live-data action.
+  if (/(ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|မိုးရွာနေ|မိုးတိတ်|weather|forecast|temperature|will it rain|is it raining|rain today)/i.test(text)) {
+    let place = command.trim()
       .replace(/^(ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please|ငါ့ကို|ကျွန်တော့်?ကို|ကျွန်မကို)\s*/i, '')
-      .replace(/(?:ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today)?\s*(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)(?:ကို|က)?\s*(?:ပြောပြပေးပါ|ပြောပြပါ|ပြောပေး|ကြည့်ပေး|စစ်ပေး|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|သိချင်တယ်)?\s*[။.!?]*$/i, '')
-      .replace(/(?:မှာ|ရဲ့|၏)\s*$/,'').trim();
-    const isGeneric = /^(ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today|ရာသီဥတု|မိုးလေဝသ|အပူချိန်|weather|forecast|မိုးရွာမလား|မိုးရွာနိုင်လား)$/i.test(place);
-    return executeAgentAction('get_weather', { query: isGeneric ? '' : place });
+      .replace(/(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|မိုးရွာနေ|မိုးတိတ်|weather|forecast|temperature|will it rain|is it raining|rain today)/ig, ' ')
+      .replace(/(?:ဒီနေ့|ယနေ့|မနက်ဖြန်|သန်ဘက်ခါ|today|tomorrow|current|now|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|ဘယ်လိုရှိမလဲ|ပြောပြပေးပါ|ပြောပြပါ|ပြောပေးပါ|ပြောပေး|ကြည့်ပေးပါ|ကြည့်ပေး|စစ်ပေးပါ|စစ်ပေး|သိချင်တယ်|သိချင်ပါတယ်|ကို|က|မှာ|တွင်|ရဲ့|၏|လား|မလား)/ig, ' ')
+      .replace(/[၊,။.!?]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const cityMatch = place.match(/ရန်ကုန်|yangon|rangoon|မန္တလေး|mandalay|နေပြည်တော်|naypyidaw|nay pyi taw|ပုဂံ|bagan|pagan|မော်လမြိုင်|mawlamyine|moulmein|တောင်ကြီး|taunggyi|ပြင်ဦးလွင်|pyin oo lwin|ပုသိမ်|pathein|လားရှိုး|lashio|စစ်တွေ|sittwe|မြစ်ကြီးနား|myitkyina/i);
+    if (cityMatch) place = cityMatch[0];
+    const generic = /^(ဒီနေ့|ယနေ့|မနက်ဖြန်|သန်ဘက်ခါ|today|tomorrow|current|now)?$/i.test(place);
+    return executeAgentAction('get_weather', { query: generic ? '' : place });
   }
 
   // Answer relative-day questions deterministically from the phone's local calendar.
