@@ -75,7 +75,7 @@ function renderChat(view: HTMLElement) {
   view.innerHTML = `
     <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
     <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'MYK AI'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
-    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
+    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 ပြောပြီး ချက်ချင်းလုပ်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
     <p class="hint">App ဖွင့်ခြင်း၊ လက်ရှိသီချင်းကျော်ခြင်းနှင့် Back Action တို့ကို ပံ့ပိုးထားသလို လုပ်ဆောင်မည်။ Android ခွင့်ပြုချက်နှင့် လက်ရှိ App ပံ့ပိုးမှုအပေါ် မူတည်နိုင်သည်။</p>`;
   view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
@@ -88,8 +88,12 @@ function renderChat(view: HTMLElement) {
       if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
       const result = await SpeechRecognition.start({ language: 'my-MM', maxResults: 1, prompt: 'မြန်မာလို ပြောပါ', partialResults: false, popup: true });
       const transcript = result.matches?.[0]?.trim();
-      if (transcript) { input.value = transcript; input.focus(); }
-      else alert('အသံကို စာသားအဖြစ် မရရှိပါ။ ဖုန်းတွင် မြန်မာ Speech Recognition ပံ့ပိုးမှုကို စစ်ပါ။');
+      if (transcript) {
+        input.value = transcript;
+        // Voice commands should be executed, not merely transcribed into the input box.
+        const form = view.querySelector<HTMLFormElement>('#chatForm');
+        if (form && !busy) form.requestSubmit();
+      } else alert('အသံကို မရှင်းလင်းစွာ မဖမ်းယူနိုင်သေးပါနော်။ မြန်မာလို ထပ်ပြောပေးပါ။');
     } catch (err) { alert('အသံဖြင့် ရိုက်မရပါ။ ' + (err instanceof Error ? err.message : 'Speech recognition error')); }
     finally { button.disabled = false; button.textContent = '🎙 အသံဖြင့် ရိုက်ရန်'; }
   });
