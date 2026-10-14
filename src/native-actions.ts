@@ -189,9 +189,9 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   // Live weather is fetched from a forecast service; use GPS unless a city is named.
   if (/(ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)/i.test(text)) {
     const place = command.trim()
-      .replace(/^(ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please|ငါ့ကို|ကျွန်တော့်?ကို|ကျွန်မကို)\\s*/i, '')
-      .replace(/(?:ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today)?\\s*(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)(?:ကို|က)?\\s*(?:ပြောပြပေးပါ|ပြောပြပါ|ပြောပေး|ကြည့်ပေး|စစ်ပေး|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|သိချင်တယ်)?\\s*[။.!?]*$/i, '')
-      .replace(/(?:မှာ|ရဲ့|၏)\\s*$/,'').trim();
+      .replace(/^(ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please|ငါ့ကို|ကျွန်တော့်?ကို|ကျွန်မကို)\s*/i, '')
+      .replace(/(?:ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today)?\s*(?:ရာသီဥတု|မိုးလေဝသ|အပူချိန်|မိုးရွာမလား|မိုးရွာနိုင်လား|weather|forecast|temperature|will it rain|is it raining)(?:ကို|က)?\s*(?:ပြောပြပေးပါ|ပြောပြပါ|ပြောပေး|ကြည့်ပေး|စစ်ပေး|ဘယ်လိုရှိလဲ|ဘယ်လိုလဲ|သိချင်တယ်)?\s*[။.!?]*$/i, '')
+      .replace(/(?:မှာ|ရဲ့|၏)\s*$/,'').trim();
     const isGeneric = /^(ဒီနေ့|ယနေ့|မနက်ဖြန်|tomorrow|today|ရာသီဥတု|မိုးလေဝသ|အပူချိန်|weather|forecast|မိုးရွာမလား|မိုးရွာနိုင်လား)$/i.test(place);
     return executeAgentAction('get_weather', { query: isGeneric ? '' : place });
   }
