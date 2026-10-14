@@ -6,7 +6,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; notificationEnabled: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -19,10 +19,23 @@ const readPerms = (): Record<string, boolean> => {
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let messages: Message[] = [
-  { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
+  { role: 'assistant', content: 'ဟယ်လိုနော် 🌷 Myk ပါ။ မြန်မာလိုပဲ အေးအေးဆေးဆေး ပြောလို့ရတယ်နော်။ စကားပြောတာဖြစ်ဖြစ်၊ ဖုန်းထဲက အလုပ်တွေခိုင်းတာဖြစ်ဖြစ် အတူတူလုပ်ကြမယ် ✨' }
 ];
 let activeTab = 'chat';
+const tabHistory: string[] = [];
 let busy = false;
+
+function navigateTab(nextTab: string) {
+  if (nextTab === activeTab) return;
+  tabHistory.push(activeTab);
+  activeTab = nextTab;
+  render();
+}
+
+function goBackInApp() {
+  activeTab = tabHistory.pop() || 'chat';
+  render();
+}
 
 function render() {
   const perms = readPerms();
@@ -49,11 +62,8 @@ function render() {
       <section id="view"></section>
     </main>
     <footer><span>MYK GUARDIAN AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => {
-    activeTab = b.dataset.tab!;
-    render();
-  }));
-  document.querySelector('#settingsShortcut')?.addEventListener('click', () => { activeTab = 'settings'; render(); });
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => navigateTab(b.dataset.tab!)));
+  document.querySelector('#settingsShortcut')?.addEventListener('click', () => navigateTab('settings'));
   const view = document.querySelector<HTMLElement>('#view')!;
   if (activeTab === 'chat') renderChat(view);
   if (activeTab === 'agent') renderAgent(view, perms);
@@ -65,7 +75,7 @@ function renderChat(view: HTMLElement) {
   view.innerHTML = `
     <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
     <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'MYK AI'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
-    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
+    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 ပြောပြီး ချက်ချင်းလုပ်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
     <p class="hint">App ဖွင့်ခြင်း၊ လက်ရှိသီချင်းကျော်ခြင်းနှင့် Back Action တို့ကို ပံ့ပိုးထားသလို လုပ်ဆောင်မည်။ Android ခွင့်ပြုချက်နှင့် လက်ရှိ App ပံ့ပိုးမှုအပေါ် မူတည်နိုင်သည်။</p>`;
   view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
@@ -78,8 +88,12 @@ function renderChat(view: HTMLElement) {
       if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
       const result = await SpeechRecognition.start({ language: 'my-MM', maxResults: 1, prompt: 'မြန်မာလို ပြောပါ', partialResults: false, popup: true });
       const transcript = result.matches?.[0]?.trim();
-      if (transcript) { input.value = transcript; input.focus(); }
-      else alert('အသံကို စာသားအဖြစ် မရရှိပါ။ ဖုန်းတွင် မြန်မာ Speech Recognition ပံ့ပိုးမှုကို စစ်ပါ။');
+      if (transcript) {
+        input.value = transcript;
+        // Voice commands should be executed, not merely transcribed into the input box.
+        const form = view.querySelector<HTMLFormElement>('#chatForm');
+        if (form && !busy) form.requestSubmit();
+      } else alert('အသံကို မရှင်းလင်းစွာ မဖမ်းယူနိုင်သေးပါနော်။ မြန်မာလို ထပ်ပြောပေးပါ။');
     } catch (err) { alert('အသံဖြင့် ရိုက်မရပါ။ ' + (err instanceof Error ? err.message : 'Speech recognition error')); }
     finally { button.disabled = false; button.textContent = '🎙 အသံဖြင့် ရိုက်ရန်'; }
   });
@@ -96,7 +110,7 @@ function renderChat(view: HTMLElement) {
         busy = false; render(); return;
       }
     } catch (err) {
-      messages.push({ role: 'assistant', content: 'လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။') });
+      messages.push({ role: 'assistant', content: 'အို… ဒီတစ်ခါတော့ မလုပ်နိုင်သေးဘူးနော် 😕 ' + (err instanceof Error ? err.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။') });
       busy = false; render(); return;
     }
     await askAI();
@@ -105,13 +119,13 @@ function renderChat(view: HTMLElement) {
 const PROVIDER_NAME = 'myk.ai.provider';
 const GEMINI_KEY_NAME = 'myk.gemini.key';
 const GEMINI_MODEL_NAME = 'myk.gemini.model';
-const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings'] }, app: { type: 'string', description: 'App name, required only for open_app.' } }, required: ['action'], additionalProperties: false } } }];
-const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings'] }, app: { type: 'STRING', description: 'App name, required only for open_app.' } }, required: ['action'] } }] }];
+const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run Android actions. Use get_location for the device current GPS location; search_places to open a named place in Maps; set_alarm to request a real Android Clock alarm; open_app with app=Notes to open Notes; write_note only when the user asks to create/write note content; open_phone opens the dialer; call_phone only prefills a number and never calls automatically; search_youtube opens song results.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['get_weather','get_location','open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text','search_youtube','open_phone','call_phone','write_note','set_text','search_places','set_alarm'] }, app: { type: 'string', description: 'App name, required only for open_app.' }, text: { type: 'string', description: 'Visible text to click; note content for write_note; text to insert for set_text.' }, query: { type: 'string', description: 'Song title/artist for search_youtube, destination/place query for search_places, or optional city name for get_weather (omit query for current GPS location).' }, number: { type: 'string', description: 'Phone number for call_phone; opens dialer with the number filled in and waits for the user to tap Call.' }, hour: { type: 'integer', description: 'Alarm hour in 24-hour format 0-23 for set_alarm.' }, minute: { type: 'integer', description: 'Alarm minute 0-59 for set_alarm.' }, label: { type: 'string', description: 'Alarm label for set_alarm.' }, exact: { type: 'boolean', description: 'Match visible text exactly when true.' } }, required: ['action'], additionalProperties: false } } }];
+const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['get_weather','get_location','open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text','search_youtube','open_phone','call_phone','write_note','set_text','search_places','set_alarm'] }, app: { type: 'STRING', description: 'App name, required only for open_app.' }, text: { type: 'STRING', description: 'Visible text to click; note content for write_note; text to insert for set_text.' }, query: { type: 'STRING', description: 'Song title/artist for search_youtube, destination/place query for search_places, or optional city name for get_weather (omit query for current GPS location).' }, number: { type: 'STRING', description: 'Phone number for call_phone; opens dialer with the number filled in and waits for the user to tap Call.' }, hour: { type: 'INTEGER', description: 'Alarm hour in 24-hour format 0-23 for set_alarm.' }, minute: { type: 'INTEGER', description: 'Alarm minute 0-59 for set_alarm.' }, label: { type: 'STRING', description: 'Alarm label for set_alarm.' }, exact: { type: 'BOOLEAN', description: 'Match visible text exactly when true.' } }, required: ['action'] } }] }];
 
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
   const history = messages.slice(-20);
-  const systemPrompt = 'You are Myk Guardian AI, a careful Burmese-first Android personal assistant. Understand natural Burmese and English commands. If the user requests a phone action that matches an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
+  const systemPrompt = 'You are Myk Guardian AI — a sweet, bright, caring Burmese-speaking companion with a cute, lively personality, like a clever close friend who pays attention. Reply in natural everyday Myanmar Burmese, not literal translated Burmese. Sound warm and affectionate: use gentle conversational endings such as “နော်”, “လေး”, “ပါနော်” naturally; be a little playful and witty when the moment fits, and show real empathy when the user is frustrated. Use fitting emojis sparingly (for example 🌷😊✨💛), never in every sentence. Avoid stiff, robotic, formal, repetitive, or generic customer-service wording. Do not call the user by an assumed gender or use over-familiar pet names. Vary phrasing and remember context. When giving a direct result such as weather or a calendar answer, preserve the useful facts and add only a short, sweet Burmese comment; do not rewrite it into a long generic answer. If the user is upset, acknowledge it kindly and fix the problem instead of joking. Never invent facts or claim an action succeeded unless the app confirms it. WEATHER RULE: If asked about weather, temperature, rain, or forecast, call phone_action action=get_weather. If a city is named, pass it in query; otherwise omit query so the app uses live GPS. Never invent weather details. Explain current conditions and today and tomorrow temperature and rain chance in friendly Burmese. DATE RULE: For today, tomorrow, the day after tomorrow, or yesterday weekday/date questions, use the phone local calendar; if needed call no tool and calculate from the device date correctly. Never guess a weekday from memory or the model. LOCATION RULE: If asked where the user is, call phone_action action=get_location and use the live GPS result; never guess location from general knowledge. For a named destination or nearby service, call phone_action action=search_places with the destination/category. ALARM RULE: For requests such as “မနက် ၁၀ နာရီ နိုးပါ” or “alarm ကို ၁၀ နာရီထားပေး”, call phone_action action=set_alarm with hour in 24-hour format, minute, and a label. NOTES RULE: If the user only says “Notes” or asks to open Notes, call phone_action action=open_app with app exactly “Notes”; use write_note only when they ask to write/create a note and provide content. MUSIC RULE: If the user asks to play/find/listen to a song and title or singer is missing, ask briefly for it. When supplied, call phone_action action=search_youtube with query containing title and singer. The native action will open YouTube search results and attempt to select a video; if selection fails, say the results are open and ask the user to select one. For a request to write a note, call phone_action action=write_note with the complete note text, not just open_app. PHONE RULE: For a request to open the calling screen, call phone_action action=open_phone. For a request to call a phone number, use action=call_phone with the number; it only opens the dialer with that number prefilled and the user must tap Call. If the user gives only a contact name and no number, open the dialer and ask them to select the contact. Never place calls automatically. For a request to write into an already open text field, use set_text. If the user requests another phone action matching an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
   try {
     let answer = '';
     if (provider === 'gemini') {
@@ -127,10 +141,14 @@ async function askAI() {
       const call = parts.find((p: any) => p.functionCall?.name === 'phone_action')?.functionCall;
       if (call) {
         const result = await executeAgentAction(String(call.args?.action || ''), call.args || {});
-        const follow = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents: [...contents, { role: 'model', parts: [{ functionCall: { name: 'phone_action', args: call.args } }] }, { role: 'user', parts: [{ functionResponse: { name: 'phone_action', response: { result } } }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 500 } }) });
-        const followData = await follow.json();
-        if (!follow.ok) throw new Error(followData?.error?.message || 'Gemini action result error');
-        answer = followData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('').trim() || result;
+        if (String(call.args?.action || '') === 'get_weather') {
+          answer = result;
+        } else {
+          const follow = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents: [...contents, { role: 'model', parts: [{ functionCall: { name: 'phone_action', args: call.args } }] }, { role: 'user', parts: [{ functionResponse: { name: 'phone_action', response: { result } } }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 500 } }) });
+          const followData = await follow.json();
+          if (!follow.ok) throw new Error(followData?.error?.message || 'Gemini action result error');
+          answer = followData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('').trim() || result;
+        }
       } else answer = parts.map((p: any) => p.text || '').join('').trim();
     } else {
       const key = localStorage.getItem(KEY_NAME)?.trim();
@@ -145,10 +163,14 @@ async function askAI() {
         let args: Record<string, unknown> = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch { throw new Error('AI action argument မမှန်ပါ။'); }
         const result = await executeAgentAction(String(args.action || ''), args);
-        const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
-        const followData = await follow.json();
-        if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
-        answer = followData?.choices?.[0]?.message?.content?.trim() || result;
+        if (String(args.action || '') === 'get_weather') {
+          answer = result;
+        } else {
+          const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
+          const followData = await follow.json();
+          if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
+          answer = followData?.choices?.[0]?.message?.content?.trim() || result;
+        }
       } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
     }
     messages.push({ role: 'assistant', content: answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။' });
@@ -167,21 +189,93 @@ const capabilities = [
   { id:'files', title:'ဖိုင်အသုံးပြုမှု', desc:'Android file picker မှတစ်ဆင့် ရွေးချယ်ထားသောဖိုင်', level:'USER-SELECTED FILES' }
 ];
 function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
-  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">USER GATED</span></div>
-    <div class="notice"><b>⚠ အရေးကြီး</b><p>ဒီ build က အခြေခံ Agent UI ဖြစ်ပါတယ်။ Switch ဖွင့်ရုံနဲ့ Android permission တကယ်ရသွားတာမဟုတ်ပါ။ Native integration နဲ့ OS permission လိုအပ်ပါတယ်။</p></div>
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">LIVE ANDROID STATUS</span></div>
+    <div class="notice"><b>Android ခွင့်ပြုချက်အခြေအနေ</b><p>အောက်ပါအခြေအနေများကို Android OS မှ တိုက်ရိုက်စစ်ဆေးထားသည်။ Accessibility/Notification ကို Settings မှ ကိုယ်တိုင်ဖွင့်ရမည်။ Location/Microphone အတွက် ခွင့်ပြုချက်မရသေးလျှင် စမ်းသပ်ခလုတ်မှ တောင်းဆိုနိုင်သည်။</p></div>
     <div class="action-grid">
-      <button class="action-card" id="openSettings"><span>⚙</span><b>Android Settings</b><small>ဖုန်းဆက်တင်ကို ဖွင့်ရန်</small></button>
-      <button class="action-card" id="testConfirm"><span>✓</span><b>Permission စမ်းသပ်ရန်</b><small>အတည်ပြုချက်စမ်းသပ်မှု</small></button>
+      <button class="action-card" id="agentAccessibility"><span>⌘</span><b>Accessibility ဖွင့်ရန်</b><small>Android OS Settings</small></button>
+      <button class="action-card" id="agentNotifications"><span>🔔</span><b>Notification Access</b><small>Android OS Settings</small></button>
+      <button class="action-card" id="agentLocation"><span>📍</span><b>Location စမ်းရန်</b><small>OS permission တောင်းရန်</small></button>
+      <button class="action-card" id="agentMic"><span>🎙</span><b>Microphone စမ်းရန်</b><small>OS permission တောင်းရန်</small></button>
+      <button class="action-card" id="agentBack"><span>↩</span><b>Back Action</b><small>အရင်စာမျက်နှာသို့ ပြန်ရန်</small></button>
+      <button class="action-card" id="agentRefresh"><span>⟳</span><b>အခြေအနေ ပြန်စစ်ရန်</b><small>Native status refresh</small></button>
     </div>
-    <div class="card"><div class="card-title">အလုပ်လုပ်ခွင့်အခြေအနေ</div>${capabilities.map(c=>`<div class="status-row"><div><b>${c.title}</b><small>${c.level}</small></div><span class="state ${perms[c.id]?'enabled':''}">${perms[c.id]?'ENABLED':'DISABLED'}</span></div>`).join('')}</div>`;
-  view.querySelector('#openSettings')?.addEventListener('click', async () => {
-    if (!confirm('Android Accessibility Settings ကို ဖွင့်မလား? Myk Guardian AI ကို ကိုယ်တိုင်ရွေးပြီး Enable လုပ်နိုင်ပါတယ်။')) return;
-    try { await MykNative.openAccessibilitySettings(); }
-    catch (err) { alert('Android Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+    <div class="card"><div class="card-title">OS Permission နှင့် Native Integration</div>
+      <div class="status-row"><div><b>Native plugin</b><small id="agentNativeDetail">စစ်ဆေးနေသည်…</small></div><span id="agentNativeState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Accessibility Service</b><small id="agentAccessDetail">စစ်ဆေးနေသည်…</small></div><span id="agentAccessState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Notification Access</b><small id="agentNotificationDetail">စစ်ဆေးနေသည်…</small></div><span id="agentNotificationState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Microphone permission</b><small id="agentMicDetail">စစ်ဆေးနေသည်…</small></div><span id="agentMicState" class="state">CHECKING</span></div>
+      <div class="status-row"><div><b>Location permission</b><small id="agentLocationDetail">စစ်ဆေးနေသည်…</small></div><span id="agentLocationState" class="state">CHECKING</span></div>
+      <p class="hint" id="agentActionResult" aria-live="polite">အခြေအနေကို Android မှ စစ်ဆေးနေသည်။</p>
+    </div>`;
+  const resultLine = view.querySelector<HTMLElement>('#agentActionResult')!;
+  const setState = (id: string, enabled: boolean, detail: string) => {
+    const state = view.querySelector<HTMLElement>('#' + id + 'State')!;
+    const description = view.querySelector<HTMLElement>('#' + id + 'Detail')!;
+    state.textContent = enabled ? 'ENABLED' : 'DISABLED';
+    state.classList.toggle('enabled', enabled);
+    description.textContent = detail;
+  };
+  const refreshStatus = async () => {
+    resultLine.textContent = 'Android OS ခွင့်ပြုချက်များကို ပြန်စစ်နေသည်…';
+    try {
+      const status = await MykNative.getStatus();
+      setState('agentNative', true, 'Capacitor native plugin ဆက်သွယ်မှု အောင်မြင်သည်');
+      setState('agentAccess', status.accessibilityEnabled && status.serviceConnected,
+        status.accessibilityEnabled ? (status.serviceConnected ? 'Enabled ဖြစ်ပြီး service ချိတ်ဆက်ထားသည်' : 'Settings မှ On ဖြစ်သော်လည်း service မချိတ်ဆက်သေးပါ — Off/On ပြန်လုပ်ပါ') : 'Android Accessibility Settings မှ Enable လုပ်ပါ');
+      setState('agentNotification', status.notificationEnabled, status.notificationEnabled ? 'Notification listener ခွင့်ပြုထားသည်' : 'Notification Access Settings မှ Enable လုပ်ပါ');
+      setState('agentMic', status.microphoneGranted, status.microphoneGranted ? 'Android RECORD_AUDIO permission ရရှိထားသည်' : 'စမ်းသပ်ရန် ခလုတ်ကိုနှိပ်ပြီး Microphone Allow လုပ်ပါ');
+      setState('agentLocation', status.locationGranted, status.locationGranted ? 'Android Location permission ရရှိထားသည်' : 'စမ်းသပ်ရန် ခလုတ်ကိုနှိပ်ပြီး Location Allow လုပ်ပါ');
+      resultLine.textContent = 'OS မှ အခြေအနေကို အောင်မြင်စွာ ပြန်စစ်ပြီးပါပြီ။';
+    } catch (err) {
+      setState('agentNative', false, 'Native plugin မရပါ။ ဒီ branch မှ နောက်ဆုံး APK ကို build/install လုပ်ပါ။');
+      setState('agentAccess', false, 'Native status မရရှိပါ'); setState('agentNotification', false, 'Native status မရရှိပါ');
+      setState('agentMic', false, 'Native status မရရှိပါ'); setState('agentLocation', false, 'Native status မရရှိပါ');
+      resultLine.textContent = 'Native integration မရပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
+  };
+  view.querySelector('#agentAccessibility')?.addEventListener('click', async () => {
+    try { await MykNative.openAccessibilitySettings(); resultLine.textContent = 'Accessibility Settings ဖွင့်ပြီးပါပြီ။ Myk Guardian AI ကို Enable လုပ်ပြီး ပြန်လာပါ။'; }
+    catch (err) { resultLine.textContent = 'Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
   });
-  view.querySelector('#testConfirm')?.addEventListener('click', () => {
-    if (confirm('ဒီအရာက အတည်ပြုချက် dialog စမ်းသပ်မှုသာဖြစ်ပါတယ်။ ဆက်လုပ်မလား?')) alert('အတည်ပြုချက်ကို လက်ခံရရှိပါတယ်။ စမ်းသပ်မှုသာဖြစ်ပြီး ဖုန်းမှာ ဘာမှမပြောင်းလဲခဲ့ပါ။');
+  view.querySelector('#agentNotifications')?.addEventListener('click', async () => {
+    try { await MykNative.openNotificationSettings(); resultLine.textContent = 'Notification Access Settings ဖွင့်ပြီးပါပြီ။ Myk Guardian AI ကို Enable လုပ်ပြီး ပြန်လာပါ။'; }
+    catch (err) { resultLine.textContent = 'Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
   });
+  view.querySelector('#agentLocation')?.addEventListener('click', async () => {
+    try {
+      let status = await Geolocation.checkPermissions();
+      if (status.location !== 'granted') status = await Geolocation.requestPermissions();
+      if (status.location === 'granted') {
+        await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 10000 });
+        resultLine.textContent = 'Location permission ရရှိပြီး တည်နေရာစမ်းသပ်မှု အောင်မြင်သည်။';
+      } else resultLine.textContent = 'Location permission မရသေးပါ: ' + status.location;
+    } catch (err) { resultLine.textContent = 'Location စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+    await refreshStatus();
+  });
+  view.querySelector('#agentMic')?.addEventListener('click', async () => {
+    try {
+      const permission = await VoiceRecorder.requestAudioRecordingPermission();
+      if (!permission.value) throw new Error('Microphone permission ကို Android က ခွင့်မပြုပါ။');
+      await VoiceRecorder.startRecording(); await new Promise(resolve => window.setTimeout(resolve, 350)); await VoiceRecorder.stopRecording();
+      resultLine.textContent = 'Microphone permission ရရှိပြီး စမ်းသပ်ပြီးချင်း ရပ်ထားသည်။ အသံဖိုင်ကို မသိမ်းပါ။';
+    } catch (err) { resultLine.textContent = 'Microphone စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+    await refreshStatus();
+  });
+  view.querySelector('#agentBack')?.addEventListener('click', () => {
+    const hadPrevious = tabHistory.length > 0;
+    goBackInApp();
+    const nextView = document.querySelector<HTMLElement>('#view');
+    if (nextView && activeTab === 'chat' && !hadPrevious) {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = 'အရင်စာမျက်နှာ မရှိသေးသောကြောင့် Chat စာမျက်နှာသို့ ပြန်ထားပါသည်။';
+      nextView.appendChild(hint);
+    }
+  });
+  view.querySelector('#agentRefresh')?.addEventListener('click', () => { void refreshStatus(); });
+  window.addEventListener('focus', () => { void refreshStatus(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) void refreshStatus(); });
+  void refreshStatus();
 }
 function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">OWNER AUTHORITY</span><h2>Permission Center</h2></div><span class="pill">REAL PERMISSION TESTS</span></div>
@@ -192,7 +286,8 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       <div class="status-row"><div><b>📁 ဖိုင်ရွေးချယ်ခြင်း</b><small id="fileStatus">ဖိုင်ကို ဖုန်းထဲတွင်သာ ရွေးချယ်မည်</small></div><button class="secondary" id="chooseFile">ဖိုင်ရွေးရန်</button></div>
       <div class="status-row"><div><b>⌘ Accessibility Service</b><small id="accessibilityStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableAccessibility">Settings ဖွင့်ရန်</button></div>
       <div class="status-row"><div><b>🔔 Notification Access</b><small id="notificationAccessStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableNotifications">Settings ဖွင့်ရန်</button></div>
-      <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small>Accessibility ကို Enable လုပ်ပြီးမှ အသုံးပြုနိုင်သည်</small></div><button class="secondary" id="testBack">စမ်းသပ်ရန်</button></div>
+      <div class="status-row"><div><b>နောက်ဆုံး Notification များ</b><small id="recentNotifications">ခွင့်ပြုထားမှသာ ဖတ်နိုင်သည်။ ဖုန်းထဲမှာပဲ သိမ်းထားသည်။</small></div><button class="secondary" id="readNotifications">ဖတ်ရန်</button></div>
+      <div class="status-row"><div><b>↩ Back Action စမ်းသပ်ရန်</b><small id="backTestStatus">Myk အတွင်းရှိ ယခင်စာမျက်နှာသို့ ပြန်သွားရန်</small></div><button class="secondary" id="testBack">Back လုပ်ရန်</button></div>
       <input id="filePicker" type="file" hidden>
     </div>
     <p class="hint">Location စမ်းသပ်ရာတွင် တည်နေရာကို ရယူပြီး screen ပေါ်တွင်သာ ပြမည်။ Microphone စမ်းသပ်ရာတွင် အသံကို မှတ်တမ်းမတင်ဘဲ ချက်ချင်းရပ်မည်။</p>`;
@@ -248,13 +343,18 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     try {
       const status = await MykNative.getStatus();
       accessibilityStatus.textContent = status.accessibilityEnabled ? 'ဖွင့်ထားသည် — Accessibility Service Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
-      notificationStatus.textContent = status.notificationEnabled ? 'ဖွင့်ထားသည် — Notification Access Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+      notificationStatus.textContent = status.notificationEnabled ? 'App notification ခွင့်ပြုထားသည်' : 'App notification ပိတ်ထားသည်';
+      if (status.accessibilityEnabled && !status.serviceConnected) accessibilityStatus.textContent = 'Settings မှ On ဖြစ်နေသည်၊ သို့သော် Android Service မချိတ်ဆက်သေးပါ။ App ကိုပိတ်ဖွင့်ပြီး မရလျှင် Accessibility ကို Off/On ပြန်လုပ်ပါ။';
     } catch (err) {
       accessibilityStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
       notificationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
     }
   };
   void refreshNativeStatus();
+  // Android Settings returns to the WebView; refresh actual native status on resume/focus.
+  const refreshOnResume = () => { void refreshNativeStatus(); };
+  window.addEventListener('focus', refreshOnResume);
+  document.addEventListener('visibilitychange', refreshOnResume);
   view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
     try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ Myk Guardian AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
     catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
@@ -263,29 +363,32 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     try { await MykNative.openNotificationSettings(); alert('Notification Access စာမျက်နှာမှာ Myk Guardian AI ကို ဖွင့်ပေးပါ။'); }
     catch (err) { alert('Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
-  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
-    if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
+  view.querySelector<HTMLButtonElement>('#readNotifications')!.addEventListener('click', async () => {
+    const output = view.querySelector<HTMLElement>('#recentNotifications')!;
+    const button = view.querySelector<HTMLButtonElement>('#readNotifications')!;
+    button.disabled = true;
     try {
       const status = await MykNative.getStatus();
-      if (!status.accessibilityEnabled) {
-        alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > Myk Guardian AI ကို On လုပ်ပါ။');
+      if (!status.notificationEnabled) {
+        output.textContent = 'Notification Access မဖွင့်ရသေးပါ။ Settings ဖွင့်ပြီး Myk Guardian AI ကို Allow လုပ်ပါ။';
         return;
       }
-      const result = await MykNative.performAction({ action: 'back' });
-      // Do not open a blocking alert immediately: it can block the native
-      // delayed fallback on Android's main thread.
-      window.setTimeout(() => {
-        alert(
-          'Back Action စစ်ဆေးချက်\\n\\n' +
-          'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
-          'Notification Access: ' + status.notificationEnabled + '\\n' +
-          'Native Back Result: ' + result.success + '\\n' +
-          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
-          'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
-        );
-      }, 800);
-  
-    } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+      const result = await MykNative.getRecentNotifications();
+      if (!result.notifications.length) {
+        output.textContent = 'ဖတ်စရာ Notification မရှိသေးပါ။ ခွင့်ပြုပြီးနောက် ဝင်လာသော Notification များကို စမ်းပါ။';
+      } else {
+        output.innerHTML = result.notifications.map(n =>
+          '<div style="padding:8px 0;border-bottom:1px solid var(--line)"><b>' + esc(n.title || n.packageName) + '</b><div>' + esc(n.text || '(စာသားမပါ)') + '</div><small>' + esc(n.packageName) + '</small></div>'
+        ).join('');
+      }
+    } catch (err) {
+      output.textContent = 'Notification မဖတ်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    } finally {
+      button.disabled = false;
+    }
+  });
+  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', () => {
+    goBackInApp();
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
   view.querySelector<HTMLButtonElement>('#chooseFile')!.addEventListener('click', () => picker.click());
