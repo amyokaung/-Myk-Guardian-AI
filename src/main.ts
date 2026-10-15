@@ -499,25 +499,28 @@ function renderSettings(view: HTMLElement) {
   view.querySelector<HTMLButtonElement>('#enrollVoice')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#enrollVoice')!;
     button.disabled = true;
+    button.textContent = '🎙 Android မိုက်ဖွင့်နေသည်…';
+    voiceResult.textContent = 'ဖုန်းရဲ့ microphone ကို ဖွင့်နေပါတယ်။ ခွင့်ပြုချက်မေးလာရင် Allow နှိပ်ပြီး အသံနမူနာ ၃ ခုအတွက် တစ်ကြိမ်စီ ၃ စက္ကန့် ပုံမှန်ပြောပါ။';
     try {
-      await enrollVoiceProfile(message => { voiceResult.textContent = message; });
+      await enrollVoiceProfile(message => { voiceResult.textContent = '🎙 ' + message; button.textContent = '🎙 ' + message; });
       voiceResult.textContent = 'Voice ID စမ်းသပ် Profile ကို ဖုန်းထဲမှာ သိမ်းပြီးပါပြီ။';
     } catch (err) {
       voiceResult.textContent = 'အသံမှတ်ပုံတင်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-    } finally { button.disabled = false; refreshVoiceProfile(); }
+    } finally { button.disabled = false; button.textContent = '🎙 ကိုယ့်အသံ မှတ်ပုံတင်ရန် (၃ နမူနာ)'; refreshVoiceProfile(); }
   });
   view.querySelector<HTMLButtonElement>('#verifyVoice')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#verifyVoice')!;
     button.disabled = true;
+    button.textContent = '🎙 Android မိုက်ဖွင့်နေသည်…';
     try {
-      voiceResult.textContent = 'အသံကို ၃ စက္ကန့်ခန့် ပြောပေးပါ…';
+      voiceResult.textContent = 'ဖုန်းရဲ့ microphone ကို ဖွင့်နေပါတယ်။ မိုက်ခွင့်ပြုချက်မေးလာရင် Allow နှိပ်ပြီး ၃ စက္ကန့် ပုံမှန်အသံနဲ့ ပြောပါ။';
       const result = await verifyVoiceProfile();
       voiceResult.textContent = 'တူညီမှု စမ်းသပ်ရလဒ်: ' + Math.round(result.similarity * 100) + '% — ' +
         (result.matched ? 'မှတ်ထားတဲ့ အသံနမူနာနဲ့ ဆင်တူပါတယ်။' : 'မတူနိုင်ပါ။ တိတ်ဆိတ်တဲ့နေရာမှာ ထပ်စမ်းပါ။') +
         ' (စမ်းသပ်အဆင့်သာဖြစ်ပြီး လုံခြုံရေးအတည်ပြုချက် မဟုတ်ပါ။)';
     } catch (err) {
       voiceResult.textContent = 'Voice ID စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-    } finally { button.disabled = false; }
+    } finally { button.disabled = false; button.textContent = 'အသံတူညီမှု စမ်းသပ်ရန်'; }
   });
   view.querySelector<HTMLButtonElement>('#clearVoice')!.addEventListener('click', () => {
     if (!confirm('ဖုန်းထဲမှာ သိမ်းထားတဲ့ Voice ID Profile ကို ဖျက်မလား?')) return;
