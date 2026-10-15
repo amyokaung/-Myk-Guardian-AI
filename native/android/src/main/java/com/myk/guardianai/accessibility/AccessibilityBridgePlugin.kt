@@ -64,10 +64,19 @@ class AccessibilityBridgePlugin : Plugin() {
                 if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IllegalStateException("Microphone က recording မစတင်နိုင်ပါ။")
                 val pcm = ShortArray(rate * 3)
                 var count = 0
+                var emptyReads = 0
                 while (count < pcm.size) {
-                    val n = recorder.read(pcm, count, pcm.size - count)
-                    if (n < 0) throw IllegalStateException("Microphone ဖတ်ယူမှု error: $n")
-                    if (n == 0) continue
+                    val n = recorder.read(pcm, count, pcm.size - count, AudioRecord.READ_BLOCKING)
+                    if (n < 0) throw IllegalStateException("Android AudioRecord ဖတ်ယူမှု error code: $n")
+                    if (n == 0) {
+                        emptyReads++
+                        if (emptyReads >= 20) {
+                            throw IllegalStateException("Android AudioRecord က အသံဒေတာ မပေးပါ။ Microphone ကို အခြား App က အသုံးပြုနေခြင်း ရှိမရှိ စစ်ပါ။")
+                        }
+                        Thread.sleep(25)
+                        continue
+                    }
+                    emptyReads = 0
                     count += n
                 }
                 recorder.stop()
@@ -129,8 +138,10 @@ class AccessibilityBridgePlugin : Plugin() {
                 result.put("sampleRate", rate)
                 result.put("capturedSamples", count)
                 call.resolve(result)
+            } catch (error: SecurityException) {
+                call.reject("Android Microphone permission ကို ငြင်းပယ်ထားပါတယ်။ Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပါ။", error)
             } catch (error: Exception) {
-                call.reject("Microphone အသံဖမ်းယူမှု မအောင်မြင်ပါ: ${error.message ?: "unknown error"}", error)
+                call.reject("Android AudioRecord အသံဖမ်းယူမှု မအောင်မြင်ပါ: ${error.javaClass.simpleName}: ${error.message ?: "အသေးစိတ်မရှိပါ"}", error)
             } finally {
                 try { recorder?.release() } catch (_: Exception) {}
             }
