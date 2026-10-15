@@ -194,6 +194,7 @@ class VedariWakeService : Service() {
         const val PREFS = "vedari_wake_preferences"
         const val ENABLED = "wake_enabled"
         const val PENDING_COMMAND = "pending_wake_command"
+        const val WAKE_ONLY_SENTINEL = "__VEDARI_WAKE_ONLY__"
         const val PENDING_AT = "pending_wake_at"
         const val CHANNEL_ID = "vedari_wake_channel"
         const val NOTIFICATION_ID = 8402
