@@ -186,7 +186,7 @@ function placeQueryFromCommand(command: string): string {
 }
 
 export async function tryNativeCommand(command: string): Promise<string | null> {
-  const text = toAsciiDigits(normalizeBurmeseCommand(command)).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\\s]*/, '').trim();
+  const text = toAsciiDigits(normalizeBurmeseCommand(command)).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\s]*/, '').trim();
 
   // Give a clearly named app priority over general AI intent classification.
   // Keep song-search requests available to the existing music flow.
