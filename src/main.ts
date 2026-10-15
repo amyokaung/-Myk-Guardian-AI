@@ -491,7 +491,11 @@ async function consumeVedariWakeCommand() {
   try {
     const pending = await MykNative.getPendingWakeCommand();
     const command = pending.command?.trim();
-    if (command) {
+    if (command === '__VEDARI_WAKE_ONLY__') {
+      navigateTab('chat');
+      messages.push({ role: 'assistant', content: 'ဟုတ်ကဲ့၊ နားထောင်နေပါတယ်။ ဘာလုပ်ပေးရမလဲနော်?' });
+      render();
+    } else if (command) {
       navigateTab('chat');
       window.setTimeout(() => {
         const input = document.querySelector<HTMLTextAreaElement>('#prompt');
