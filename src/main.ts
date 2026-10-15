@@ -553,11 +553,15 @@ function renderSettings(view: HTMLElement) {
     try {
       voiceResult.textContent = 'စမ်းသပ်အသံကို ၃ စက္ကန့် ဖမ်းယူနေပါတယ်။ မှတ်ပုံတင်တုန်းကလို ပုံမှန်အသံနဲ့ ပြောပါ။';
       const result = await verifyVoiceProfile();
-      voiceResult.textContent = 'တူညီမှု စမ်းသပ်ရလဒ်: ' + Math.round(result.similarity * 100) + '% — ' +
+      const report = 'တူညီမှု စမ်းသပ်ရလဒ်: ' + Math.round(result.similarity * 100) + '% — ' +
         (result.matched ? 'မှတ်ထားတဲ့ အသံနမူနာနဲ့ ဆင်တူပါတယ်။' : 'မတူနိုင်ပါ။ တိတ်ဆိတ်တဲ့နေရာမှာ ထပ်စမ်းပါ။') +
         ' (စမ်းသပ်အဆင့်သာဖြစ်ပြီး လုံခြုံရေးအတည်ပြုချက် မဟုတ်ပါ။)';
+      voiceResult.textContent = report;
+      window.alert(report);
     } catch (err) {
-      voiceResult.textContent = 'Voice ID စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+      const report = 'Voice ID စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+      voiceResult.textContent = report;
+      window.alert(report);
     } finally {
       verifyVoiceButton.textContent = 'အသံတူညီမှု စမ်းသပ်ရန်';
       verifyVoiceButton.disabled = !getVoiceProfileStatus().enrolled;
