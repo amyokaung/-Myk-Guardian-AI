@@ -31,17 +31,23 @@ import com.getcapacitor.PermissionState
 class AccessibilityBridgePlugin : Plugin() {
     @PluginMethod
     fun captureVoiceFeatures(call: PluginCall) {
-        if (getPermissionState("microphone") != PermissionState.GRANTED) {
-            requestPermissionForAlias("microphone", call, "microphonePermissionCallback")
+        // Use Android's actual runtime permission as the source of truth. Capacitor's
+        // cached alias state can be stale on some Android/OEM builds even after the
+        // user has enabled Microphone in Settings.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            captureVoiceFeaturesNow(call)
             return
         }
-        captureVoiceFeaturesNow(call)
+        requestPermissionForAlias("microphone", call, "microphonePermissionCallback")
     }
 
     @com.getcapacitor.annotation.PermissionCallback
     private fun microphonePermissionCallback(call: PluginCall) {
-        if (getPermissionState("microphone") == PermissionState.GRANTED) captureVoiceFeaturesNow(call)
-        else call.reject("Microphone ခွင့်ပြုချက် မရပါ။ Android Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပါ။")
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        if (granted) captureVoiceFeaturesNow(call)
+        else call.reject("Android မှာ Microphone permission မရသေးပါ။ Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပြီး App ကို အပြည့်ပိတ်/ပြန်ဖွင့်ပါ။")
     }
 
     private fun captureVoiceFeaturesNow(call: PluginCall) {
