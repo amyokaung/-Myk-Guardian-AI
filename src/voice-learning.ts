@@ -56,10 +56,18 @@ async function recordAndExtract(_seconds = 3): Promise<number[]> {
   // Capture is performed by Android AudioRecord through the registered native plugin,
   // so WebView getUserMedia/WebChromeClient behavior cannot silently block the microphone.
   try {
-    const result = await Promise.race([
-      VoiceCapture.captureVoiceFeatures(),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('မိုက်အသံဖမ်းယူမှု ၈ စက္ကန့်အတွင်း ပြန်မလာပါ။ App ကိုပိတ်ဖွင့်ပြီး ထပ်စမ်းပါ။')), 8000))
-    ]);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let result: Awaited<ReturnType<typeof VoiceCapture.captureVoiceFeatures>>;
+    try {
+      result = await Promise.race([
+        VoiceCapture.captureVoiceFeatures(),
+        new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('အသံဖမ်းယူမှု ၁၂ စက္ကန့်အတွင်း မပြီးဆုံးပါ။ Microphone ကို အခြား App က အသုံးပြုနေခြင်း၊ Android AudioRecord မစတင်နိုင်ခြင်း ဖြစ်နိုင်ပါတယ်။ Myk ကိုပိတ်ဖွင့်ပြီး Voice ID ကို ထပ်စမ်းပါ။')), 12000);
+        })
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
     if (!result || !Array.isArray(result.features) || result.features.length < 18 ||
         !Number.isFinite(result.capturedSamples) || result.capturedSamples < 12000) {
       throw new Error('Android microphone က မှန်ကန်တဲ့ အသံဒေတာ မပေးပါ။');
@@ -67,10 +75,16 @@ async function recordAndExtract(_seconds = 3): Promise<number[]> {
     return result.features.map(value => Number(value));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (/permission|denied|microphone|record_audio/i.test(message)) {
-      throw new Error('မိုက်ခရိုဖုန်း မဖွင့်နိုင်ပါ။ ခွင့်ပြုချက်မေးလာရင် Allow နှိပ်ပါ။ မမေးလာရင် Android Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပါ။ အသေးစိတ်: ' + message);
+    // Only label an error as a permission problem when the native error actually
+    // identifies permission denial. The native plugin also uses the word
+    // "Microphone" for AudioRecord initialization/read failures.
+    if (/permission.{0,30}(denied|not granted|not allowed|မရသေး)|denied.{0,30}permission|record_audio|eacces|permission_denied/i.test(message)) {
+      throw new Error('Android Microphone ခွင့်ပြုချက်ကို မရရှိပါ။ Settings > Apps > Myk Guardian AI > Permissions > Microphone မှ Allow လုပ်ထားကြောင်း စစ်ပါ။ အသေးစိတ်: ' + message);
     }
-    throw new Error('အသံဖမ်းယူမှု မအောင်မြင်ပါ: ' + message);
+    if (/audiorecord|recording|အသံဖမ်းယူ|microphone ဖတ်ယူမှု|ဖွင့်မရပါ|စတင်မရပါ|စတင်နိုင်ပါ/i.test(message)) {
+      throw new Error('Microphone permission ကို ကျော်လွန်ပြီး အသံဖမ်းယူမှုအဆင့်မှာ အမှားဖြစ်နေပါတယ်။ အခြား App က မိုက်ကို အသုံးပြုနေလျှင် ပိတ်ပါ၊ ဖုန်းခေါ်ဆိုမှုကို ရပ်ပါ၊ Myk ကို ပိတ်ဖွင့်ပြီး ထပ်စမ်းပါ။ အသေးစိတ်: ' + message);
+    }
+    throw new Error('Voice ID စမ်းသပ်မှု မအောင်မြင်ပါ။ အသေးစိတ်: ' + message);
   }
 }
 
