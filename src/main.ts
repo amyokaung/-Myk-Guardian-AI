@@ -502,13 +502,13 @@ function renderSettings(view: HTMLElement) {
       voiceResult.textContent = 'မှတ်ထားတဲ့ စကားပြင်ဆင်မှုကို ဖျက်လိုက်ပါပြီ။';
     }));
   };
-  const capturedVoiceSamples: number[][] = [];
+  const capturedVoiceSamples: (number[] | undefined)[] = [undefined, undefined, undefined];
   const saveVoiceButton = view.querySelector<HTMLButtonElement>('#saveVoiceProfile')!;
   const verifyVoiceButton = view.querySelector<HTMLButtonElement>('#verifyVoice')!;
   const sampleButtons = [1, 2, 3].map(i => view.querySelector<HTMLButtonElement>('#recordVoice' + i)!);
   const updateVoiceCaptureControls = () => {
-    saveVoiceButton.disabled = capturedVoiceSamples.length !== 3;
-    saveVoiceButton.textContent = '💾 Voice ID ကို Save လုပ်ရန် (' + capturedVoiceSamples.length + '/3)';
+    saveVoiceButton.disabled = capturedVoiceSamples.filter(Boolean).length !== 3;
+    saveVoiceButton.textContent = '💾 Voice ID ကို Save လုပ်ရန် (' + capturedVoiceSamples.filter(Boolean).length + '/3)';
     verifyVoiceButton.disabled = !getVoiceProfileStatus().enrolled;
     sampleButtons.forEach((button, index) => {
       button.classList.toggle('enabled', !!capturedVoiceSamples[index]);
@@ -539,7 +539,7 @@ function renderSettings(view: HTMLElement) {
   });
   saveVoiceButton.addEventListener('click', () => {
     try {
-      saveVoiceProfile(capturedVoiceSamples);
+      saveVoiceProfile(capturedVoiceSamples as number[][]);
       voiceResult.textContent = '✅ Voice ID နမူနာ ၃ ခုလုံးကို ဖုန်းထဲမှာ Save လုပ်ပြီးပါပြီ။ ယခုမှ အသံတူညီမှု စမ်းသပ်ရန် ခလုတ်ကို နှိပ်နိုင်ပါပြီ။';
       refreshVoiceProfile();
       updateVoiceCaptureControls();
