@@ -25,6 +25,7 @@ import java.util.Locale
 class VedariWakeService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var restarting = false
+    private var awaitingCommand = false
 
     override fun onCreate() {
         super.onCreate()
@@ -64,14 +65,25 @@ class VedariWakeService : Service() {
                     override fun onResults(results: android.os.Bundle?) {
                         val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         val heard = candidates.firstOrNull().orEmpty().trim()
-                        if (isWakeCommand(heard)) {
+                        if (awaitingCommand) {
+                            awaitingCommand = false
+                            if (heard.isNotBlank()) {
+                                savePendingCommand(heard)
+                                wakeScreenBriefly()
+                                openAppWithCommand(heard)
+                            }
+                        } else if (isWakeCommand(heard)) {
                             val command = removeWakePhrase(heard)
-                            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                                .putString(PENDING_COMMAND, command)
-                                .putLong(PENDING_AT, System.currentTimeMillis())
-                                .apply()
                             wakeScreenBriefly()
-                            openAppWithCommand(command)
+                            if (command.isBlank()) {
+                                // Wake phrase alone: open the assistant and keep listening for the next utterance.
+                                awaitingCommand = true
+                                savePendingCommand(WAKE_ONLY_SENTINEL)
+                                openAppWithCommand(WAKE_ONLY_SENTINEL)
+                            } else {
+                                savePendingCommand(command)
+                                openAppWithCommand(command)
+                            }
                         }
                         scheduleRestart()
                     }
@@ -93,6 +105,13 @@ class VedariWakeService : Service() {
         } catch (_: Exception) {
             scheduleRestart()
         }
+    }
+
+    private fun savePendingCommand(command: String) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putString(PENDING_COMMAND, command)
+            .putLong(PENDING_AT, System.currentTimeMillis())
+            .apply()
     }
 
     private fun isWakeCommand(value: String): Boolean {
