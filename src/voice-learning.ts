@@ -142,7 +142,7 @@ export async function recordVoiceSample(): Promise<number[]> {
 }
 
 export function saveVoiceProfile(samples: number[][]): void {
-  if (samples.length !== 3 || samples.some(sample => sample.length < 18)) {
+  if (samples.length !== 3 || [0, 1, 2].some(i => !Array.isArray(samples[i]) || samples[i].length < 18)) {
     throw new Error('အသံနမူနာ ၃ ခုလုံးကို အရင်ဖမ်းယူပါ။');
   }
   const vector = samples[0].map((_, i) => samples.reduce((sum, sample) => sum + sample[i], 0) / samples.length);
