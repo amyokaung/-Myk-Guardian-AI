@@ -56,7 +56,10 @@ async function recordAndExtract(_seconds = 3): Promise<number[]> {
   // Capture is performed by Android AudioRecord through the registered native plugin,
   // so WebView getUserMedia/WebChromeClient behavior cannot silently block the microphone.
   try {
-    const result = await VoiceCapture.captureVoiceFeatures();
+    const result = await Promise.race([
+      VoiceCapture.captureVoiceFeatures(),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('မိုက်အသံဖမ်းယူမှု ၈ စက္ကန့်အတွင်း ပြန်မလာပါ။ App ကိုပိတ်ဖွင့်ပြီး ထပ်စမ်းပါ။')), 8000))
+    ]);
     if (!result || !Array.isArray(result.features) || result.features.length < 18 ||
         !Number.isFinite(result.capturedSamples) || result.capturedSamples < 12000) {
       throw new Error('Android microphone က မှန်ကန်တဲ့ အသံဒေတာ မပေးပါ။');
