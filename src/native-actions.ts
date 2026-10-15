@@ -187,6 +187,14 @@ function placeQueryFromCommand(command: string): string {
 export async function tryNativeCommand(command: string): Promise<string | null> {
   const text = toAsciiDigits(command.toLowerCase().trim()).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\s]*/, '').trim();
 
+  // Give a clearly named app priority over general AI intent classification.
+  // Keep song-search requests available to the existing music flow.
+  const openVerb = /(ဖွင့်|ဖွင့်|ဖွင့္|open|launch)/i.test(text);
+  const isSongRequest = /(သီချင်း|song|music|track)/i.test(text);
+  if (openVerb && !isSongRequest && /(youtube|ယူကျု|ယူကျူး)/i.test(text)) {
+    return executeAgentAction('open_app', { app: 'YouTube' });
+  }
+
   // Resolve explicit app-launch commands locally before any LLM tool-calling.
   // This prevents a clear "open YouTube" request from being reinterpreted as Maps/search.
   const directOpen = text.match(/^(?:(?:ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please)\s*)?(youtube|ယူကျု|ယူကျူး|google maps|google map|maps|map|မြေပုံ|facebook|ဖေ့စ်ဘွတ်|chrome|ခရုမ်း|camera|ကင်မရာ|settings|ဆက်တင်|phone|ဖုန်း|photos|gallery|ဂယ်လာရီ|play store)(?:\s*(?:app|အက်ပ်))?\s*(?:ကို\s*)?(?:ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်လိုက်|ဖွင့်|ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်|ဖွင့္ပါ|ဖွင့္|open|launch)\s*[။.!?]*$/i);
