@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
+import { normalizeBurmeseCommand } from './voice-learning';
 
 type NativeResult = { success: boolean; message?: string };
 type AgentNative = {
@@ -185,7 +186,7 @@ function placeQueryFromCommand(command: string): string {
 }
 
 export async function tryNativeCommand(command: string): Promise<string | null> {
-  const text = toAsciiDigits(command.toLowerCase().trim()).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\s]*/, '').trim();
+  const text = toAsciiDigits(normalizeBurmeseCommand(command)).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\\s]*/, '').trim();
 
   // Give a clearly named app priority over general AI intent classification.
   // Keep song-search requests available to the existing music flow.
@@ -197,12 +198,12 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
 
   // Resolve explicit app-launch commands locally before any LLM tool-calling.
   // This prevents a clear "open YouTube" request from being reinterpreted as Maps/search.
-  const directOpen = text.match(/^(?:(?:ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please)\s*)?(youtube|ယူကျု|ယူကျူး|google maps|google map|maps|map|မြေပုံ|facebook|ဖေ့စ်ဘွတ်|chrome|ခရုမ်း|camera|ကင်မရာ|settings|ဆက်တင်|phone|ဖုန်း|photos|gallery|ဂယ်လာရီ|play store)(?:\s*(?:app|အက်ပ်))?\s*(?:ကို\s*)?(?:ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်လိုက်|ဖွင့်|ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်|ဖွင့္ပါ|ဖွင့္|open|launch)\s*[။.!?]*$/i);
+  const directOpen = text.match(/^(?:(?:ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please)\s*)?(youtube|google maps|google map|maps|map|မြေပုံ|facebook|chrome|camera|settings|phone|photos|gallery|play store|ဆက်တင်|ဖုန်း|ကင်မရာ|ခရုမ်း|ဖေ့စ်ဘွတ်|ဂယ်လာရီ)(?:\s*(?:app|အက်ပ်))?\s*(?:ကို\s*)?(?:ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်လိုက်|ဖွင့်|ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်|ဖွင့္ပါ|ဖွင့္|open|launch)\s*[။.!?]*$/i);
   if (directOpen?.[1]) {
     const alias = directOpen[1].toLowerCase();
-    const app = /^(youtube|ယူကျု|ယူကျူး)$/.test(alias) ? 'YouTube'
+    const app = /^(youtube|ယူကျု|ယူကျူး|ယူကျူ)$/.test(alias) ? 'YouTube'
       : /^(google maps|google map|maps|map|မြေပုံ)$/.test(alias) ? 'Maps'
-      : /^(facebook|ဖေ့စ်ဘွတ်)$/.test(alias) ? 'Facebook'
+      : /^(facebook|ဖေ့စ်ဘွတ်|ဖေ့စ်ဘွတ်ခ်)$/.test(alias) ? 'Facebook'
       : /^(chrome|ခရုမ်း)$/.test(alias) ? 'Chrome'
       : /^(camera|ကင်မရာ)$/.test(alias) ? 'Camera'
       : /^(settings|ဆက်တင်)$/.test(alias) ? 'Settings'
@@ -270,15 +271,18 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
     if (query && !genericOnly && query.length > 1) return executeAgentAction('search_places', { query });
   }
 
-  // Route music requests through AI so title/artist follow-ups can be used for YouTube search.
-  if (/(သီချင်း|သီချင်းတစ်ပုဒ်|သီချင်းလေး|song|music|track)/i.test(text) && /(ဖွင့်|ဖွင့်|နားထောင်|play|listen|ရှာ)/i.test(text)) return null;
-  if (/နောက်တစ်ပုဒ်|သီချင်းကျော်|သီချင်း.*ကျော်|နောက်သီချင်း|next (song|track)|skip (this )?(song|track)|media next/.test(text)) return executeAgentAction('media_next');
-  if (/အရင်သီချင်း|ရှေ့သီချင်း|previous (song|track)|last track|နောက်ပြန်သီချင်း/.test(text)) return executeAgentAction('media_previous');
-  if (/pause|play|ခဏရပ်|ဆက်ဖွင့်|သီချင်း.*ရပ်|သီချင်း.*ဆက်/.test(text)) return executeAgentAction('media_play_pause');
-  if (/အသံတိုး|အသံမြှင့်|volume up|increase volume|louder/.test(text)) return executeAgentAction('volume_up');
-  if (/အသံလျှော့|အသံချ|volume down|decrease volume|quieter/.test(text)) return executeAgentAction('volume_down');
-  if (/^\s*(home|go home|home button)\s*$|ပင်မစာမျက်နှာ|home ကိုသွား/.test(text)) return executeAgentAction('home');
-  if (/\b(back|go back|press back|back button)\b|နောက်ပြန်|နောက်သို့ပြန်|ပြန်သွား/.test(text)) return executeAgentAction('back');
+  // Match everyday Burmese colloquial variants before handing music-search requests to AI.
+  // Execute media controls locally; reserve song-title searches for the AI search flow.
+  if (/(နောက်တစ်ပုဒ်|နောက်တစ်ပုဒ်သွား|နောက်တစ်ပုဒ်ဖွင့်|နောက်သီချင်း|နောက်သီချင်းသွား|နောက်သီချင်းဖွင့်|သီချင်းကျော်|သီချင်း.*ကျော်|ဒီသီချင်းကျော်|ဒီပုဒ်ကျော်|ကျော်ပေး|ကျော်လိုက်|ကျော်သွား|skip|next song|next track|skip (this )?(song|track)|media next)/i.test(text)) return executeAgentAction('media_next');
+  if (/(အရင်သီချင်း|ရှေ့သီချင်း|အရင်တစ်ပုဒ်|အရင်ပုဒ်|အရင်ပုဒ်ပြန်|သီချင်းနောက်ပြန်|နောက်ပြန်သီချင်း|previous (song|track)|last track|previous track|media previous)/i.test(text)) return executeAgentAction('media_previous');
+  if (/(သီချင်း|သီချင်းလေး|သီချင်းကို|music|track).*(ခဏရပ်|ရပ်ထား|ရပ်ပေး|ရပ်လိုက်|ပိတ်ပေး|ပိတ်လိုက်|stop|pause)|(ခဏရပ်|ရပ်ထား|ရပ်ပေး|ရပ်လိုက်|stop|pause).*(သီချင်း|music|track)|^(ခဏရပ်|ရပ်ထား|ရပ်ပေး|သီချင်းရပ်|သီချင်းပိတ်|pause|stop music|media pause)$/i.test(text)) return executeAgentAction('media_play_pause');
+  if (/(သီချင်း|music|track).*(ဆက်ဖွင့်|ဆက်နားထောင်|ပြန်ဖွင့်|ပြန်ဖွင့်|play|resume)|(ဆက်ဖွင့်|ဆက်နားထောင်|ပြန်ဖွင့်|ပြန်ဖွင့်|resume|continue playing).*(သီချင်း|music|track)/i.test(text)) return executeAgentAction('media_play_pause');
+  if (/(အသံတိုး|အသံတင်|အသံမြှင့်|အသံပိုကျယ်|ပိုကျယ်အောင်|volume up|increase volume|louder|turn it up)/i.test(text)) return executeAgentAction('volume_up');
+  if (/(အသံလျှော့|အသံချ|အသံလျော့|အသံနည်းနည်းချ|အသံလျှော့ပေး|ပိုတိုးတိတ်|volume down|decrease volume|quieter|turn it down)/i.test(text)) return executeAgentAction('volume_down');
+  // Music title/search requests are handled by AI, not mistaken for media controls.
+  if (/(သီချင်း|သီချင်းတစ်ပုဒ်|သီချင်းလေး|song|music|track)/i.test(text) && /(ဖွင့်|နားထောင်|play|listen|ရှာ|search)/i.test(text)) return null;
+  if (/^\s*(home|go home|home button)\s*$|ပင်မစာမျက်နှာ|ပင်မကိုသွား|အိမ်မျက်နှာပြင်|home ကိုသွား|home သွား/.test(text)) return executeAgentAction('home');
+  if (/\b(back|go back|press back|back button)\b|နောက်ပြန်|နောက်သို့ပြန်|ပြန်သွား|အရင်စာမျက်နှာ|အရင်နေရာကိုပြန်|ပြန်သွားပေး|နောက်ကိုပြန်/.test(text)) return executeAgentAction('back');
   if (/settings|ဆက်တင်/.test(text) && /ဖွင့်|open|သွား/.test(text)) return executeAgentAction('open_settings');
   const phoneNumber = command.match(/(?:\+?\d[\d\s().-]{5,}\d)/)?.[0]?.replace(/[\s().-]/g, '') || '';
   if (/(ဖုန်းခေါ်|ဖုန်းခေါ်ဆို|ဖုန်းဆက်|call (?:him|her|them|this number|the number|someone)|make a call)/i.test(text)) {

@@ -4,7 +4,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
-import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, getVoiceProfileStatus, recordVoiceSample, saveVoiceProfile, verifyVoiceProfile, clearVoiceProfile, removePhraseCorrection } from './voice-learning';
+import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, removePhraseCorrection } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
@@ -421,28 +421,16 @@ function renderSettings(view: HTMLElement) {
     <div class="card">
       <div class="card-title">🎙 ဗေဒါရီ Voice Assistant · Wake Word</div>
       <p class="muted">“ဗေဒါရီရေ၊ …” လို့ခေါ်ပြီး ဖုန်းမျက်နှာပြင်ပိတ်နေချိန်မှာပါ နားထောင်နိုင်ရန် Android foreground microphone service ကို ကိုယ်တိုင်ဖွင့်ပါ။ နားထောင်နေစဉ် Notification အမြဲပြမည်။ Stop လုပ်ရန် ဒီနေရာ သို့မဟုတ် Notification ကို အသုံးပြုပါ။</p>
-      <p class="muted"><b>သိထားရန်:</b> ဒီအဆင့်က Wake Word ကိုသာ ရှာဖွေသည်။ ကိုယ့်အသံဟုတ်မဟုတ် အတည်ပြုသည့် Voice ID မပါသေးပါ။ Android/Google Speech Recognition ရရှိနိုင်မှု၊ အင်တာနက်နှင့် ဖုန်းထုတ်လုပ်သူ၏ background ကန့်သတ်ချက်များအပေါ် မူတည်သည်။ Lock PIN/လက်ဗွေကို ကျော်မဖြေပါ။</p>
+      <p class="muted"><b>သိထားရန်:</b> ဒီအဆင့်က Wake Word ကိုသာ ရှာဖွေသည်။ Voice ID မလိုဘဲ မြန်မာစကားနဲ့ ညွှန်ကြားချက်တွေကို နားလည်ဖို့ အဓိကထားထားပါတယ်။ Android/Google Speech Recognition ရရှိနိုင်မှု၊ အင်တာနက်နှင့် ဖုန်းထုတ်လုပ်သူ၏ background ကန့်သတ်ချက်များအပေါ် မူတည်သည်။ Lock PIN/လက်ဗွေကို ကျော်မဖြေပါ။</p>
       <div class="status-row"><div><b>Wake Word နားထောင်မှု</b><small id="vedariWakeStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><span class="state" id="vedariWakeState">CHECKING</span></div>
       <button class="primary wide" id="startVedariWake">ဗေဒါရီ နားထောင်မှု စတင်ရန်</button>
       <button class="secondary wide" id="stopVedariWake">နားထောင်မှု ရပ်ရန်</button>
     </div>
     <div class="card">
-      <div class="card-title">🧠 ကိုယ့်အသံလေယူလေသိမ်း + Voice ID (စမ်းသပ်အဆင့်)</div>
-      <p class="muted">အသံနမူနာ ၃ ခုကို ဖုန်းထဲမှာပဲ သိမ်းပြီး နောက်တစ်ကြိမ်အသံနဲ့ နှိုင်းယှဉ်စမ်းသပ်မယ်။ အသံမှတ်တမ်းကို cloud သို့ မပို့ပါ။ ဒီအဆင့်က neural speaker model မဟုတ်သေးလို့ လုံခြုံရေးအတွက် အသံပိုင်ရှင်အတည်ပြုချက်အဖြစ် မသုံးပါ။</p>
-      <div class="status-row"><div><b>Voice ID Profile</b><small id="voiceProfileStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><span class="state" id="voiceProfileState">LOCAL</span></div>
-      <p class="muted">နမူနာတစ်ခုစီအတွက် မိုက်ခလုတ်ကို ဖိထားပြီး ၃ စက္ကန့်ခန့် ပုံမှန်အသံနဲ့ ပြောပါ။ ၃ ခုလုံးရပြီးမှ Save လုပ်ပါ။ Save မလုပ်မချင်း Test ကို အသုံးမပြုနိုင်ပါ။</p>
-      <div class="voice-sample-actions">
-        <button class="secondary wide" id="recordVoice1" type="button">🎙 နမူနာ ၁ — မိုက်ကို ဖိထားပါ</button>
-        <button class="secondary wide" id="recordVoice2" type="button">🎙 နမူနာ ၂ — မိုက်ကို ဖိထားပါ</button>
-        <button class="secondary wide" id="recordVoice3" type="button">🎙 နမူနာ ၃ — မိုက်ကို ဖိထားပါ</button>
-      </div>
-      <button class="primary wide" id="saveVoiceProfile" type="button" disabled>💾 Voice ID ကို Save လုပ်ရန် (0/3)</button>
-      <button class="secondary wide" id="verifyVoice" type="button" disabled>အသံတူညီမှု စမ်းသပ်ရန်</button>
-      <button class="danger wide" id="clearVoice">Voice ID Profile ဖျက်ရန်</button>
-      <hr>
-      <p class="muted"><b>ကိုယ့်လေယူလေသိမ်း သင်ယူခြင်း</b> — Speech Recognition က ကြားမှားတဲ့ စကားနဲ့ ကိုယ်တကယ်ခိုင်းချင်တဲ့ အမိန့်ကို မှတ်ထားနိုင်ပါတယ်။ နောက်တစ်ကြိမ် အတိအကျတူတဲ့ transcript ကြားရင် မှန်ကန်တဲ့အမိန့်အဖြစ် ပြောင်းပေးမယ်။</p>
-      <label for="heardPhrase">ဗေဒါရီ ကြားမိတဲ့ စကား</label><input id="heardPhrase" placeholder="ဥပမာ - ယူကျု ဖွင့်ပေး">
-      <label for="correctPhrase">ကိုယ်တကယ်ခိုင်းချင်တဲ့ စကား</label><input id="correctPhrase" placeholder="ဥပမာ - YouTube ကို ဖွင့်ပေးပါ">
+      <div class="card-title">🧠 မြန်မာစကားနားလည်မှုနှင့် စကားသင်ယူခြင်း</div>
+      <p class="muted">Voice ID မလိုပါ။ ဗေဒါရီက မြန်မာစကားပြောပုံ၊ အတိုကောက်၊ အဓိပ္ပာယ်တူ စကားလုံးတွေကို ပိုကောင်းကောင်းနားလည်စေရန် အသုံးပြုနိုင်ပါတယ်။ Speech Recognition ကြားမှားတဲ့စကားကို အောက်မှာ မှန်ကန်တဲ့အမိန့်နဲ့ တွဲမှတ်ထားနိုင်ပါတယ်။</p>
+      <label for="heardPhrase">ဗေဒါရီ ကြားမိတဲ့ စကား</label><input id="heardPhrase" placeholder="ဥပမာ - ယူကျု နောက်တစ်ပုဒ်ကျော်ပေး">
+      <label for="correctPhrase">ကိုယ်တကယ်ခိုင်းချင်တဲ့ အမိန့်</label><input id="correctPhrase" placeholder="ဥပမာ - YouTube မှာ နောက်တစ်ပုဒ်ကျော်ပေး">
       <button class="primary wide" id="savePhrase">ဒီစကားကို မှတ်သားရန်</button>
       <div id="phraseList" class="muted"></div>
       <p id="voiceLearningResult" class="muted" aria-live="polite"></p>
@@ -483,13 +471,7 @@ function renderSettings(view: HTMLElement) {
   });
   void refreshWakeStatus();
   const voiceResult = view.querySelector<HTMLElement>('#voiceLearningResult')!;
-  const voiceProfileStatus = view.querySelector<HTMLElement>('#voiceProfileStatus')!;
-  const voiceProfileState = view.querySelector<HTMLElement>('#voiceProfileState')!;
   const refreshVoiceProfile = () => {
-    const status = getVoiceProfileStatus();
-    voiceProfileStatus.textContent = status.enrolled ? `အသံနမူနာ ${status.samples} ခု မှတ်ထားသည်။ ဖုန်းထဲတွင်သာ သိမ်းထားသည်။` : 'အသံမမှတ်ပုံတင်ရသေးပါ။';
-    voiceProfileState.textContent = status.enrolled ? 'ENROLLED' : 'NOT SET';
-    voiceProfileState.classList.toggle('enabled', status.enrolled);
     const phraseMap = getPhraseMap();
     const list = view.querySelector<HTMLElement>('#phraseList')!;
     const entries = Object.entries(phraseMap);
@@ -502,76 +484,7 @@ function renderSettings(view: HTMLElement) {
       voiceResult.textContent = 'မှတ်ထားတဲ့ စကားပြင်ဆင်မှုကို ဖျက်လိုက်ပါပြီ။';
     }));
   };
-  const capturedVoiceSamples: (number[] | undefined)[] = [undefined, undefined, undefined];
-  const saveVoiceButton = view.querySelector<HTMLButtonElement>('#saveVoiceProfile')!;
-  const verifyVoiceButton = view.querySelector<HTMLButtonElement>('#verifyVoice')!;
-  const sampleButtons = [1, 2, 3].map(i => view.querySelector<HTMLButtonElement>('#recordVoice' + i)!);
-  const updateVoiceCaptureControls = () => {
-    saveVoiceButton.disabled = capturedVoiceSamples.filter(Boolean).length !== 3;
-    saveVoiceButton.textContent = '💾 Voice ID ကို Save လုပ်ရန် (' + capturedVoiceSamples.filter(Boolean).length + '/3)';
-    verifyVoiceButton.disabled = !getVoiceProfileStatus().enrolled;
-    sampleButtons.forEach((button, index) => {
-      button.classList.toggle('enabled', !!capturedVoiceSamples[index]);
-      if (!button.disabled) button.textContent = capturedVoiceSamples[index]
-        ? '✓ နမူနာ ' + (index + 1) + ' ပြီးပါပြီ — ပြန်ဖမ်းရန်'
-        : '🎙 နမူနာ ' + (index + 1) + ' — မိုက်ကို ဖိထားပါ';
-    });
-  };
-  sampleButtons.forEach((button, index) => {
-    button.addEventListener('pointerdown', async event => {
-      event.preventDefault();
-      if (button.disabled) return;
-      button.disabled = true;
-      button.textContent = '🎙 နမူနာ ' + (index + 1) + ' ကို ဖမ်းယူနေသည်…';
-      voiceResult.textContent = 'မိုက်ကို ဖွင့်ထားပါတယ်။ ၃ စက္ကန့်ခန့် ပုံမှန်အသံနဲ့ ပြောပါ။ ဖမ်းယူမှုပြီးတဲ့အထိ မိုက်ခလုတ်ကို ဖိထားပါ။';
-      try {
-        const vector = await recordVoiceSample();
-        capturedVoiceSamples[index] = vector;
-        voiceResult.textContent = 'နမူနာ ' + (index + 1) + '/3 ကို ဖမ်းယူပြီးပါပြီ။ နောက်နမူနာကို ဆက်ဖမ်းပါ။';
-      } catch (err) {
-        voiceResult.textContent = 'နမူနာ ' + (index + 1) + ' မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-      } finally {
-        button.disabled = false;
-        updateVoiceCaptureControls();
-      }
-    });
-    button.addEventListener('click', event => { event.preventDefault(); });
-  });
-  saveVoiceButton.addEventListener('click', () => {
-    try {
-      saveVoiceProfile(capturedVoiceSamples as number[][]);
-      voiceResult.textContent = '✅ Voice ID နမူနာ ၃ ခုလုံးကို ဖုန်းထဲမှာ Save လုပ်ပြီးပါပြီ။ ယခုမှ အသံတူညီမှု စမ်းသပ်ရန် ခလုတ်ကို နှိပ်နိုင်ပါပြီ။';
-      refreshVoiceProfile();
-      updateVoiceCaptureControls();
-    } catch (err) {
-      voiceResult.textContent = 'Save မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-    }
-  });
-  verifyVoiceButton.addEventListener('click', async () => {
-    verifyVoiceButton.disabled = true;
-    verifyVoiceButton.textContent = '🎙 အသံကို စစ်ဆေးနေသည်…';
-    try {
-      voiceResult.textContent = 'စမ်းသပ်အသံကို ၃ စက္ကန့် ဖမ်းယူနေပါတယ်။ မှတ်ပုံတင်တုန်းကလို ပုံမှန်အသံနဲ့ ပြောပါ။';
-      const result = await verifyVoiceProfile();
-      const report = 'တူညီမှု စမ်းသပ်ရလဒ်: ' + Math.round(result.similarity * 100) + '% — ' +
-        (result.matched ? 'မှတ်ထားတဲ့ အသံနမူနာနဲ့ ဆင်တူပါတယ်။' : 'မတူနိုင်ပါ။ တိတ်ဆိတ်တဲ့နေရာမှာ ထပ်စမ်းပါ။') +
-        ' (စမ်းသပ်အဆင့်သာဖြစ်ပြီး လုံခြုံရေးအတည်ပြုချက် မဟုတ်ပါ။)';
-      voiceResult.textContent = report;
-      window.alert(report);
-    } catch (err) {
-      const report = 'Voice ID စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-      voiceResult.textContent = report;
-      window.alert(report);
-    } finally {
-      verifyVoiceButton.textContent = 'အသံတူညီမှု စမ်းသပ်ရန်';
-      verifyVoiceButton.disabled = !getVoiceProfileStatus().enrolled;
-    }
-  });
-  updateVoiceCaptureControls();
-  view.querySelector<HTMLButtonElement>('#clearVoice')!.addEventListener('click', () => {
-    if (!confirm('ဖုန်းထဲမှာ သိမ်းထားတဲ့ Voice ID Profile ကို ဖျက်မလား?')) return;
-    clearVoiceProfile(); refreshVoiceProfile(); voiceResult.textContent = 'Voice ID Profile ကို ဖျက်ပြီးပါပြီ။';
-  });
+  refreshVoiceProfile();
   view.querySelector<HTMLButtonElement>('#savePhrase')!.addEventListener('click', () => {
     const heard = view.querySelector<HTMLInputElement>('#heardPhrase')!.value;
     const intended = view.querySelector<HTMLInputElement>('#correctPhrase')!.value;
