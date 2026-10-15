@@ -1,4 +1,6 @@
 const PHRASES_KEY = 'vedari.phrase.map.v1';
+// Delete the obsolete local speaker profile left by older Voice ID builds.
+try { localStorage.removeItem('vedari.voice.profile.v1'); } catch { /* storage may be unavailable */ }
 type PhraseMap = Record<string, string>;
 
 export function normalizePhrase(value: string): string {
