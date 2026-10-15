@@ -137,15 +137,18 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return aa && bb ? dot / Math.sqrt(aa * bb) : 0;
 }
 
-export async function enrollVoiceProfile(onProgress?: (message: string) => void): Promise<void> {
-  const vectors: number[][] = [];
-  for (let i = 1; i <= 3; i++) {
-    onProgress?.('အသံနမူနာ ' + i + '/3 — ပုံမှန်အသံနဲ့ ၃ စက္ကန့်ခန့် ပြောပါ။');
-    vectors.push(await recordAndExtract(3));
-    if (i < 3) await new Promise(resolve => window.setTimeout(resolve, 500));
+export async function recordVoiceSample(): Promise<number[]> {
+  return recordAndExtract(3);
+}
+
+export function saveVoiceProfile(samples: number[][]): void {
+  if (samples.length !== 3 || samples.some(sample => sample.length < 18)) {
+    throw new Error('အသံနမူနာ ၃ ခုလုံးကို အရင်ဖမ်းယူပါ။');
   }
-  const vector = vectors[0].map((_, i) => vectors.reduce((sum, v) => sum + v[i], 0) / vectors.length);
-  localStorage.setItem(PROFILE_KEY, JSON.stringify({ version: 1, createdAt: Date.now(), samples: vectors.length, vector } satisfies VoiceProfile));
+  const vector = samples[0].map((_, i) => samples.reduce((sum, sample) => sum + sample[i], 0) / samples.length);
+  localStorage.setItem(PROFILE_KEY, JSON.stringify({
+    version: 1, createdAt: Date.now(), samples: samples.length, vector
+  } satisfies VoiceProfile));
 }
 
 export async function verifyVoiceProfile(): Promise<{ matched: boolean; similarity: number }> {
