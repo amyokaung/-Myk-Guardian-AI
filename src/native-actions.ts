@@ -185,7 +185,7 @@ function placeQueryFromCommand(command: string): string {
 }
 
 export async function tryNativeCommand(command: string): Promise<string | null> {
-  const text = toAsciiDigits(command.toLowerCase().trim());
+  const text = toAsciiDigits(command.toLowerCase().trim()).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\\s]*/, '').trim();
 
   // Resolve explicit app-launch commands locally before any LLM tool-calling.
   // This prevents a clear "open YouTube" request from being reinterpreted as Maps/search.
