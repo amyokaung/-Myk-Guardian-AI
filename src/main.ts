@@ -4,6 +4,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
+import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, getVoiceProfileStatus, enrollVoiceProfile, verifyVoiceProfile, clearVoiceProfile, removePhraseCorrection } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
@@ -89,8 +90,8 @@ function renderChat(view: HTMLElement) {
       const result = await SpeechRecognition.start({ language: 'my-MM', maxResults: 1, prompt: 'မြန်မာလို ပြောပါ', partialResults: false, popup: true });
       const transcript = result.matches?.[0]?.trim();
       if (transcript) {
-        input.value = transcript;
-        // Voice commands should be executed, not merely transcribed into the input box.
+        input.value = applyLearnedPhrase(transcript);
+        // Apply owner-specific phrase corrections before dispatching the voice command.
         const form = view.querySelector<HTMLFormElement>('#chatForm');
         if (form && !busy) form.requestSubmit();
       } else alert('အသံကို မရှင်းလင်းစွာ မဖမ်းယူနိုင်သေးပါနော်။ မြန်မာလို ထပ်ပြောပေးပါ။');
@@ -425,6 +426,21 @@ function renderSettings(view: HTMLElement) {
       <button class="primary wide" id="startVedariWake">ဗေဒါရီ နားထောင်မှု စတင်ရန်</button>
       <button class="secondary wide" id="stopVedariWake">နားထောင်မှု ရပ်ရန်</button>
     </div>
+    <div class="card">
+      <div class="card-title">🧠 ကိုယ့်အသံလေယူလေသိမ်း + Voice ID (စမ်းသပ်အဆင့်)</div>
+      <p class="muted">အသံနမူနာ ၃ ခုကို ဖုန်းထဲမှာပဲ သိမ်းပြီး နောက်တစ်ကြိမ်အသံနဲ့ နှိုင်းယှဉ်စမ်းသပ်မယ်။ အသံမှတ်တမ်းကို cloud သို့ မပို့ပါ။ ဒီအဆင့်က neural speaker model မဟုတ်သေးလို့ လုံခြုံရေးအတွက် အသံပိုင်ရှင်အတည်ပြုချက်အဖြစ် မသုံးပါ။</p>
+      <div class="status-row"><div><b>Voice ID Profile</b><small id="voiceProfileStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><span class="state" id="voiceProfileState">LOCAL</span></div>
+      <button class="primary wide" id="enrollVoice">🎙 ကိုယ့်အသံ မှတ်ပုံတင်ရန် (၃ နမူနာ)</button>
+      <button class="secondary wide" id="verifyVoice">အသံတူညီမှု စမ်းသပ်ရန်</button>
+      <button class="danger wide" id="clearVoice">Voice ID Profile ဖျက်ရန်</button>
+      <hr>
+      <p class="muted"><b>ကိုယ့်လေယူလေသိမ်း သင်ယူခြင်း</b> — Speech Recognition က ကြားမှားတဲ့ စကားနဲ့ ကိုယ်တကယ်ခိုင်းချင်တဲ့ အမိန့်ကို မှတ်ထားနိုင်ပါတယ်။ နောက်တစ်ကြိမ် အတိအကျတူတဲ့ transcript ကြားရင် မှန်ကန်တဲ့အမိန့်အဖြစ် ပြောင်းပေးမယ်။</p>
+      <label for="heardPhrase">ဗေဒါရီ ကြားမိတဲ့ စကား</label><input id="heardPhrase" placeholder="ဥပမာ - ယူကျု ဖွင့်ပေး">
+      <label for="correctPhrase">ကိုယ်တကယ်ခိုင်းချင်တဲ့ စကား</label><input id="correctPhrase" placeholder="ဥပမာ - YouTube ကို ဖွင့်ပေးပါ">
+      <button class="primary wide" id="savePhrase">ဒီစကားကို မှတ်သားရန်</button>
+      <div id="phraseList" class="muted"></div>
+      <p id="voiceLearningResult" class="muted" aria-live="polite"></p>
+    </div>
     <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
     <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
   const wakeStatus = view.querySelector<HTMLElement>('#vedariWakeStatus')!;
@@ -460,6 +476,65 @@ function renderSettings(view: HTMLElement) {
     await refreshWakeStatus();
   });
   void refreshWakeStatus();
+  const voiceResult = view.querySelector<HTMLElement>('#voiceLearningResult')!;
+  const voiceProfileStatus = view.querySelector<HTMLElement>('#voiceProfileStatus')!;
+  const voiceProfileState = view.querySelector<HTMLElement>('#voiceProfileState')!;
+  const refreshVoiceProfile = () => {
+    const status = getVoiceProfileStatus();
+    voiceProfileStatus.textContent = status.enrolled ? `အသံနမူနာ ${status.samples} ခု မှတ်ထားသည်။ ဖုန်းထဲတွင်သာ သိမ်းထားသည်။` : 'အသံမမှတ်ပုံတင်ရသေးပါ။';
+    voiceProfileState.textContent = status.enrolled ? 'ENROLLED' : 'NOT SET';
+    voiceProfileState.classList.toggle('enabled', status.enrolled);
+    const phraseMap = getPhraseMap();
+    const list = view.querySelector<HTMLElement>('#phraseList')!;
+    const entries = Object.entries(phraseMap);
+    list.innerHTML = entries.length ? '<b>မှတ်ထားတဲ့ စကားများ</b>' + entries.map(([heard, intended]) =>
+      '<div style="padding:7px 0;border-bottom:1px solid var(--line)"><div>ကြားမိ: ' + esc(heard) + '</div><div>ပြောင်းရန်: ' + esc(intended) + '</div><button type="button" class="secondary" data-remove-phrase="' + esc(heard) + '">ဖျက်ရန်</button></div>'
+    ).join('') : 'စကားပြင်ဆင်မှု မမှတ်ထားရသေးပါ။';
+    list.querySelectorAll<HTMLButtonElement>('[data-remove-phrase]').forEach(button => button.addEventListener('click', () => {
+      removePhraseCorrection(button.dataset.removePhrase || '');
+      refreshVoiceProfile();
+      voiceResult.textContent = 'မှတ်ထားတဲ့ စကားပြင်ဆင်မှုကို ဖျက်လိုက်ပါပြီ။';
+    }));
+  };
+  view.querySelector<HTMLButtonElement>('#enrollVoice')!.addEventListener('click', async () => {
+    const button = view.querySelector<HTMLButtonElement>('#enrollVoice')!;
+    button.disabled = true;
+    try {
+      await enrollVoiceProfile(message => { voiceResult.textContent = message; });
+      voiceResult.textContent = 'Voice ID စမ်းသပ် Profile ကို ဖုန်းထဲမှာ သိမ်းပြီးပါပြီ။';
+    } catch (err) {
+      voiceResult.textContent = 'အသံမှတ်ပုံတင်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    } finally { button.disabled = false; refreshVoiceProfile(); }
+  });
+  view.querySelector<HTMLButtonElement>('#verifyVoice')!.addEventListener('click', async () => {
+    const button = view.querySelector<HTMLButtonElement>('#verifyVoice')!;
+    button.disabled = true;
+    try {
+      voiceResult.textContent = 'အသံကို ၃ စက္ကန့်ခန့် ပြောပေးပါ…';
+      const result = await verifyVoiceProfile();
+      voiceResult.textContent = 'တူညီမှု စမ်းသပ်ရလဒ်: ' + Math.round(result.similarity * 100) + '% — ' +
+        (result.matched ? 'မှတ်ထားတဲ့ အသံနမူနာနဲ့ ဆင်တူပါတယ်။' : 'မတူနိုင်ပါ။ တိတ်ဆိတ်တဲ့နေရာမှာ ထပ်စမ်းပါ။') +
+        ' (စမ်းသပ်အဆင့်သာဖြစ်ပြီး လုံခြုံရေးအတည်ပြုချက် မဟုတ်ပါ။)';
+    } catch (err) {
+      voiceResult.textContent = 'Voice ID စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    } finally { button.disabled = false; }
+  });
+  view.querySelector<HTMLButtonElement>('#clearVoice')!.addEventListener('click', () => {
+    if (!confirm('ဖုန်းထဲမှာ သိမ်းထားတဲ့ Voice ID Profile ကို ဖျက်မလား?')) return;
+    clearVoiceProfile(); refreshVoiceProfile(); voiceResult.textContent = 'Voice ID Profile ကို ဖျက်ပြီးပါပြီ။';
+  });
+  view.querySelector<HTMLButtonElement>('#savePhrase')!.addEventListener('click', () => {
+    const heard = view.querySelector<HTMLInputElement>('#heardPhrase')!.value;
+    const intended = view.querySelector<HTMLInputElement>('#correctPhrase')!.value;
+    try {
+      savePhraseCorrection(heard, intended);
+      view.querySelector<HTMLInputElement>('#heardPhrase')!.value = '';
+      view.querySelector<HTMLInputElement>('#correctPhrase')!.value = '';
+      voiceResult.textContent = 'စကားပြင်ဆင်မှုကို ဖုန်းထဲမှာ မှတ်သားပြီးပါပြီ။ နောက်တစ်ကြိမ် transcript အတိအကျတူရင် အလိုအလျောက် ပြောင်းပေးမယ်။';
+      refreshVoiceProfile();
+    } catch (err) { voiceResult.textContent = err instanceof Error ? err.message : 'စကားကို မသိမ်းနိုင်ပါ။'; }
+  });
+  refreshVoiceProfile();
   view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
