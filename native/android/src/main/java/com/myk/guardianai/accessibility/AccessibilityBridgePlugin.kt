@@ -4,6 +4,9 @@ import android.content.Intent
 import android.net.Uri
 import android.content.ComponentName
 import android.media.AudioManager
+import android.media.AudioRecord
+import android.media.AudioFormat
+import android.media.MediaRecorder
 import android.view.KeyEvent
 import android.provider.Settings
 import android.content.pm.PackageManager
@@ -19,11 +22,115 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.PermissionState
 
 // IMPORTANT: This name must match registerPlugin('MykAccessibility') in src/main.ts
 // and src/native-actions.ts.
-@CapacitorPlugin(name = "MykAccessibility")
+@CapacitorPlugin(name = "MykAccessibility", permissions = [Permission(alias = "microphone", strings = [android.Manifest.permission.RECORD_AUDIO])])
 class AccessibilityBridgePlugin : Plugin() {
+    @PluginMethod
+    fun captureVoiceFeatures(call: PluginCall) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            requestPermissionForAlias("microphone", call, "microphonePermissionCallback")
+            return
+        }
+        captureVoiceFeaturesNow(call)
+    }
+
+    @com.getcapacitor.annotation.PermissionCallback
+    private fun microphonePermissionCallback(call: PluginCall) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) captureVoiceFeaturesNow(call)
+        else call.reject("Microphone ခွင့်ပြုချက် မရပါ။ Android Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပါ။")
+    }
+
+    private fun captureVoiceFeaturesNow(call: PluginCall) {
+        Thread {
+            var recorder: AudioRecord? = null
+            try {
+                val rate = 16000
+                val minBuffer = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+                if (minBuffer <= 0) throw IllegalStateException("ဖုန်း microphone ကို ဖွင့်မရပါ။")
+                recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, rate, AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuffer, rate * 2))
+                if (recorder.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("Microphone AudioRecord ကို စတင်မရပါ။")
+                recorder.startRecording()
+                if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) throw IllegalStateException("Microphone က recording မစတင်နိုင်ပါ။")
+                val pcm = ShortArray(rate * 3)
+                var count = 0
+                while (count < pcm.size) {
+                    val n = recorder.read(pcm, count, pcm.size - count)
+                    if (n < 0) throw IllegalStateException("Microphone ဖတ်ယူမှု error: $n")
+                    if (n == 0) continue
+                    count += n
+                }
+                recorder.stop()
+                val floats = FloatArray(count) { pcm[it] / 32768.0f }
+                var peak = 0.0
+                var square = 0.0
+                for (v in floats) { peak = maxOf(peak, kotlin.math.abs(v.toDouble())); square += v.toDouble() * v }
+                val rms = kotlin.math.sqrt(square / floats.size)
+                if (peak < 0.008 || rms < 0.0018) throw IllegalStateException("အသံဖမ်းယူမှု ရရှိပေမဲ့ အသံအလွန်တိုး/တိတ်ဆိတ်နေပါတယ်။ ဖုန်းကို ပါးစပ်နားထားပြီး ပုံမှန်အသံနဲ့ ၃ စက္ကန့်ပြောပါ။")
+                val bands = 16
+                val energy = DoubleArray(bands)
+                var totalRms = 0.0
+                var totalZcr = 0.0
+                var frames = 0
+                val frameSize = 512
+                val hop = 1024
+                var start = 0
+                while (start + frameSize < floats.size) {
+                    var frameSquare = 0.0
+                    var crossings = 0
+                    for (i in 1 until frameSize) {
+                        val v = floats[start + i].toDouble()
+                        frameSquare += v * v
+                        if ((v >= 0) != (floats[start + i - 1] >= 0)) crossings++
+                    }
+                    val frameRms = kotlin.math.sqrt(frameSquare / frameSize)
+                    if (frameRms >= 0.008) {
+                        totalRms += frameRms
+                        totalZcr += crossings.toDouble() / frameSize
+                        for (b in 0 until bands) {
+                            val frequency = 100.0 + b * 220.0
+                            val omega = 2.0 * Math.PI * frequency / rate
+                            var re = 0.0
+                            var im = 0.0
+                            var i = 0
+                            while (i < frameSize) {
+                                val window = 0.5 - 0.5 * kotlin.math.cos(2.0 * Math.PI * i / (frameSize - 1))
+                                val sample = floats[start + i].toDouble() * window
+                                re += sample * kotlin.math.cos(omega * i)
+                                im -= sample * kotlin.math.sin(omega * i)
+                                i += 2
+                            }
+                            energy[b] += kotlin.math.ln(1e-9 + re * re + im * im)
+                        }
+                        frames++
+                    }
+                    start += hop
+                }
+                if (frames < 8) throw IllegalStateException("အသံမရှင်းလင်းပါ။ ဆူညံသံနည်းတဲ့နေရာမှာ ထပ်စမ်းပါ။")
+                val avg = energy.map { it / frames }
+                val mean = avg.average()
+                val deviation = kotlin.math.sqrt(avg.map { (it - mean) * (it - mean) }.average()).let { if (it == 0.0) 1.0 else it }
+                val vector = JSArray()
+                avg.forEach { vector.put((it - mean) / deviation) }
+                vector.put(totalRms / frames)
+                vector.put(totalZcr / frames)
+                val result = JSObject()
+                result.put("features", vector)
+                result.put("sampleRate", rate)
+                result.put("capturedSamples", count)
+                call.resolve(result)
+            } catch (error: Exception) {
+                call.reject("Microphone အသံဖမ်းယူမှု မအောင်မြင်ပါ: ${error.message ?: "unknown error"}", error)
+            } finally {
+                try { recorder?.release() } catch (_: Exception) {}
+            }
+        }.start()
+    }
+
     @PluginMethod
     fun getStatus(call: PluginCall) {
         val result = JSObject()
