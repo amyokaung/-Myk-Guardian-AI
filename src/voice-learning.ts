@@ -3,12 +3,11 @@ import { VoiceRecorder } from 'capacitor-voice-recorder';
 const PROFILE_KEY = 'vedari.voice.profile.v1';
 const PHRASES_KEY = 'vedari.phrase.map.v1';
 
-type Recording = { recordDataBase64?: string; mimeType?: string; msDuration?: number };
 type VoiceProfile = { version: 1; createdAt: number; samples: number; vector: number[] };
 type PhraseMap = Record<string, string>;
 
 function normalizePhrase(value: string): string {
-  return value.toLocaleLowerCase('my-MM').replace(/[၊,။.!?]/g, ' ').replace(/\s+/g, ' ').trim();
+  return value.toLocaleLowerCase('my-MM').replace(/[၊,။.!?]/g, ' ').replace(/\\s+/g, ' ').trim();
 }
 
 export function getPhraseMap(): PhraseMap {
@@ -45,28 +44,81 @@ export function getVoiceProfileStatus(): { enrolled: boolean; samples: number } 
   } catch { return { enrolled: false, samples: 0 }; }
 }
 
+/**
+ * Captures raw PCM directly from the device microphone through WebView getUserMedia.
+ * This avoids depending on decoding the recorder plugin's encoded MP4/AAC output,
+ * which is not consistently decodable in Android WebView. Nothing is uploaded.
+ */
 async function recordAndExtract(seconds = 3): Promise<number[]> {
-  const permission = await VoiceRecorder.requestAudioRecordingPermission();
-  if (!permission.value) throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
-  await VoiceRecorder.startRecording();
-  await new Promise(resolve => window.setTimeout(resolve, seconds * 1000));
-  const stopped = await VoiceRecorder.stopRecording();
-  const data = stopped.value as Recording;
-  if (!data.recordDataBase64) throw new Error('အသံဖိုင်ကို မရရှိပါ။ ထပ်စမ်းပါ။');
-  const binary = atob(data.recordDataBase64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextClass) throw new Error('ဒီ WebView မှာ audio analysis မရပါ။');
-  const context = new AudioContextClass();
-  try {
-    const audio = await context.decodeAudioData(bytes.buffer.slice(0));
-    const channel = audio.getChannelData(0);
-    if (audio.duration < 1.2 || channel.length < 12000) throw new Error('အသံနမူနာတိုလွန်းပါတယ်။ ၃ စက္ကန့်ခန့် ပြောပေးပါ။');
-    return extractAcousticFeatures(channel, audio.sampleRate);
-  } finally {
-    await context.close();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('ဒီ Android WebView မှာ microphone capture API မရပါ။ App ကို update လုပ်ပြီး Microphone permission ကို စစ်ပါ။');
   }
+  let stream: MediaStream | null = null;
+  let context: AudioContext | null = null;
+  let source: MediaStreamAudioSourceNode | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let silentGain: GainNode | null = null;
+  const chunks: Float32Array[] = [];
+  let capturedSamples = 0;
+  let peak = 0;
+  let sumSquares = 0;
+  try {
+    // Capacitor Android permission should already be granted in app settings;
+    // getUserMedia itself prompts/validates WebView microphone permission.
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+      video: false
+    });
+    const AudioContextClass = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) throw new Error('ဒီ WebView မှာ audio capture မရပါ။');
+    context = new AudioContextClass();
+    if (context.state === 'suspended') await context.resume();
+    source = context.createMediaStreamSource(stream);
+    processor = context.createScriptProcessor(4096, 1, 1);
+    silentGain = context.createGain();
+    silentGain.gain.value = 0;
+    processor.onaudioprocess = event => {
+      const input = event.inputBuffer.getChannelData(0);
+      const copy = new Float32Array(input.length);
+      copy.set(input);
+      chunks.push(copy);
+      capturedSamples += copy.length;
+      for (let i = 0; i < input.length; i++) {
+        const v = input[i];
+        const abs = Math.abs(v);
+        if (abs > peak) peak = abs;
+        sumSquares += v * v;
+      }
+    };
+    source.connect(processor);
+    processor.connect(silentGain);
+    silentGain.connect(context.destination);
+    // Wait for live PCM from the microphone. The UI tells the user to speak.
+    await new Promise<void>(resolve => window.setTimeout(resolve, seconds * 1000));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/permission|denied|notallowed/i.test(message)) {
+      throw new Error('Microphone permission မရပါ။ Android Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပါ။');
+    }
+    throw new Error('Microphone အသံဖမ်းယူမှု မအောင်မြင်ပါ: ' + message);
+  } finally {
+    if (processor) { processor.onaudioprocess = null; try { processor.disconnect(); } catch {} }
+    try { source?.disconnect(); } catch {}
+    try { silentGain?.disconnect(); } catch {}
+    stream?.getTracks().forEach(track => track.stop());
+    if (context) { try { await context.close(); } catch {} }
+  }
+  if (capturedSamples < 12000 || chunks.length < 3) {
+    throw new Error('Microphone က အသံဒေတာ မပို့ပေးပါ။ Permission ကိုစစ်ပြီး ထပ်စမ်းပါ။');
+  }
+  const rms = Math.sqrt(sumSquares / capturedSamples);
+  if (peak < 0.008 || rms < 0.0018) {
+    throw new Error('အသံဖမ်းယူပြီးပါပြီ၊ ဒါပေမဲ့ အသံအလွန်တိုး/တိတ်ဆိတ်နေပါတယ်။ ဖုန်းကို ပါးစပ်နားထားပြီး ပုံမှန်အသံနဲ့ ပြောပါ။');
+  }
+  const samples = new Float32Array(capturedSamples);
+  let offset = 0;
+  for (const chunk of chunks) { samples.set(chunk, offset); offset += chunk.length; }
+  return extractAcousticFeatures(samples, context?.sampleRate || 48000);
 }
 
 // Lightweight local acoustic descriptor used only for a best-effort prototype match.
