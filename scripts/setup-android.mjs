@@ -56,9 +56,14 @@ let manifest = fs.readFileSync(manifestPath, 'utf8');
 // Declare runtime permissions explicitly; Capacitor Geolocation only requests permissions declared here.
 const requiredPermissions = [
   'android.permission.QUERY_ALL_PACKAGES',
+  'android.permission.PACKAGE_USAGE_STATS',
   'android.permission.ACCESS_COARSE_LOCATION',
   'android.permission.ACCESS_FINE_LOCATION',
   'android.permission.RECORD_AUDIO',
+  'android.permission.READ_CALL_LOG',
+  'android.permission.READ_MEDIA_IMAGES',
+  'android.permission.READ_MEDIA_VIDEO',
+  'android.permission.READ_EXTERNAL_STORAGE',
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_MICROPHONE',
   'android.permission.WAKE_LOCK',
