@@ -371,17 +371,17 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
 function renderSettings(view: HTMLElement) {
   const key = localStorage.getItem(KEY_NAME) || '';
   const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-  view.innerHTML = \`<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">OPENROUTER</span></div>
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">OPENROUTER</span></div>
     <div class="card settings-card">
       <label for="apiKey">OpenRouter API Key</label>
-      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="\${esc(key)}">
+      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}">
       <small>API Key ကို ဒီဖုန်းထဲမှာပဲ သိမ်းထားပါတယ်။ Key ကို အခြားသူထံ မမျှဝေပါနဲ့။</small>
       <button class="secondary wide" id="showKey">API Key ပြ / ဖျောက်</button>
       <hr>
       <label for="modelSearch">Model ရှာရန်</label>
       <input id="modelSearch" type="text" placeholder="ဥပမာ - Gemini Flash, GPT, Qwen">
       <label for="modelSelect">OpenRouter Model ရွေးရန်</label>
-      <select id="modelSelect"><option value="\${esc(model)}" selected>\${esc(model)} · လက်ရှိရွေးထားသည်</option></select>
+      <select id="modelSelect"><option value="${esc(model)}" selected>${esc(model)} · လက်ရှိရွေးထားသည်</option></select>
       <small id="modelPriceInfo">Model စာရင်းရယူပြီးနောက် token ဈေးနှုန်းကို ပြပါမယ်။ ဈေးနှုန်းက OpenRouter က ပေးတဲ့ အချက်အလက်အပေါ် မူတည်ပါတယ်။</small>
       <button class="primary wide" id="loadModels">OpenRouter မှ Model စာရင်းရယူရန်</button>
       <p id="modelStatus" class="muted" aria-live="polite">Model ရွေးချယ်ပြီး Settings သိမ်းပါ။ ကုန်ကျစရိတ်ကို Model အလိုက် ကွာခြားနိုင်ပါတယ်။</p>
@@ -404,7 +404,7 @@ function renderSettings(view: HTMLElement) {
       <button class="primary wide" id="savePhrase">စကားပြင်ဆင်မှု သိမ်းရန်</button>
       <div id="phraseList" class="muted"></div>
       <p id="voiceLearningResult" class="muted" aria-live="polite"></p>
-    </div>\`;
+    </div>`;
   const modelSelect = view.querySelector<HTMLSelectElement>('#modelSelect')!;
   const modelSearch = view.querySelector<HTMLInputElement>('#modelSearch')!;
   const modelPriceInfo = view.querySelector<HTMLElement>('#modelPriceInfo')!;
@@ -417,7 +417,7 @@ function renderSettings(view: HTMLElement) {
     return '$' + (n * 1_000_000).toLocaleString('en-US', {maximumFractionDigits: 4});
   };
   const modelLabel = (m: {id:string;name:string;prompt:string;completion:string}) =>
-    \`\${m.name} · \${m.id} · In \${moneyPerMillion(m.prompt)} / Out \${moneyPerMillion(m.completion)} per 1M tokens\`;
+    `${m.name} · ${m.id} · In ${moneyPerMillion(m.prompt)} / Out ${moneyPerMillion(m.completion)} per 1M tokens`;
   const renderModelOptions = () => {
     const q = modelSearch.value.trim().toLowerCase();
     const filtered = availableModels.filter(m => !q || (m.id + ' ' + m.name).toLowerCase().includes(q));
@@ -435,13 +435,13 @@ function renderSettings(view: HTMLElement) {
     });
     updateSelectedModelInfo();
     modelStatus.textContent = filtered.length
-      ? \`မော်ဒယ် \${filtered.length} ခု တွေ့ရှိသည်။ ဈေးသက်သာသော မော်ဒယ်များကို အပေါ်ဘက်တွင် ဦးစားပေးထားပါတယ်။\`
+      ? `မော်ဒယ် ${filtered.length} ခု တွေ့ရှိသည်။ ဈေးသက်သာသော မော်ဒယ်များကို အပေါ်ဘက်တွင် ဦးစားပေးထားပါတယ်။`
       : availableModels.length ? 'ရှာဖွေမှုနဲ့ ကိုက်ညီတဲ့ Model မရှိပါ။ စာလုံးအနည်းငယ်ပဲ ရိုက်ရှာကြည့်ပါ။' : modelStatus.textContent;
   };
   const updateSelectedModelInfo = () => {
     const m = availableModels.find(item => item.id === modelSelect.value);
     modelPriceInfo.textContent = m
-      ? \`Input: \${moneyPerMillion(m.prompt)} / 1M tokens · Output: \${moneyPerMillion(m.completion)} / 1M tokens\${m.context ? ' · Context: ' + m.context.toLocaleString('en-US') : ''}. API usage အမှန်တကယ်ကုန်ကျစရိတ်ကို OpenRouter Dashboard မှာ ပြန်စစ်ပါ။\`
+      ? `Input: ${moneyPerMillion(m.prompt)} / 1M tokens · Output: ${moneyPerMillion(m.completion)} / 1M tokens${m.context ? ' · Context: ' + m.context.toLocaleString('en-US') : ''}. API usage အမှန်တကယ်ကုန်ကျစရိတ်ကို OpenRouter Dashboard မှာ ပြန်စစ်ပါ။`
       : 'ဒီ Model အတွက် ဈေးနှုန်းကို မရသေးပါ။ Model စာရင်းရယူရန် ခလုတ်ကို နှိပ်ပါ။';
   };
   modelSearch.addEventListener('input', renderModelOptions);
@@ -467,7 +467,7 @@ function renderSettings(view: HTMLElement) {
         .sort((x, y) => (Number(x.prompt) + Number(x.completion)) - (Number(y.prompt) + Number(y.completion)));
       if (!availableModels.length) throw new Error('ဈေးနှုန်းပါသော Model စာရင်း မရရှိပါ။');
       renderModelOptions();
-      modelStatus.textContent = \`Model \${availableModels.length} ခု ရရှိပါပြီ။ စျေးနှုန်းနဲ့ ကိုက်ညီတာကို ရွေးပါ။\`;
+      modelStatus.textContent = `Model ${availableModels.length} ခု ရရှိပါပြီ။ စျေးနှုန်းနဲ့ ကိုက်ညီတာကို ရွေးပါ။`;
     } catch (err) {
       modelStatus.textContent = 'Model စာရင်းမရပါ: ' + (err instanceof Error ? err.message : 'Network error') + '။ အင်တာနက်နဲ့ API Key ကို စစ်ပါ။';
     } finally { button.disabled = false; }
