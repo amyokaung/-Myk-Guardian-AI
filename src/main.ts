@@ -117,63 +117,33 @@ function renderChat(view: HTMLElement) {
     await askAI();
   });
 }
-const PROVIDER_NAME = 'myk.ai.provider';
-const GEMINI_KEY_NAME = 'myk.gemini.key';
-const GEMINI_MODEL_NAME = 'myk.gemini.model';
 const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run Android actions. Use get_location for the device current GPS location; search_places to open a named place in Maps; set_alarm to request a real Android Clock alarm; open_app with app=Notes to open Notes; write_note only when the user asks to create/write note content; open_phone opens the dialer; call_phone only prefills a number and never calls automatically; search_youtube opens song results.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['get_weather','get_location','open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text','search_youtube','open_phone','call_phone','write_note','set_text','search_places','set_alarm'] }, app: { type: 'string', description: 'App name, required only for open_app.' }, text: { type: 'string', description: 'Visible text to click; note content for write_note; text to insert for set_text.' }, query: { type: 'string', description: 'Song title/artist for search_youtube, destination/place query for search_places, or optional city name for get_weather (omit query for current GPS location).' }, number: { type: 'string', description: 'Phone number for call_phone; opens dialer with the number filled in and waits for the user to tap Call.' }, hour: { type: 'integer', description: 'Alarm hour in 24-hour format 0-23 for set_alarm.' }, minute: { type: 'integer', description: 'Alarm minute 0-59 for set_alarm.' }, label: { type: 'string', description: 'Alarm label for set_alarm.' }, exact: { type: 'boolean', description: 'Match visible text exactly when true.' } }, required: ['action'], additionalProperties: false } } }];
-const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action requested by the user.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['get_weather','get_location','open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text','search_youtube','open_phone','call_phone','write_note','set_text','search_places','set_alarm'] }, app: { type: 'STRING', description: 'App name, required only for open_app.' }, text: { type: 'STRING', description: 'Visible text to click; note content for write_note; text to insert for set_text.' }, query: { type: 'STRING', description: 'Song title/artist for search_youtube, destination/place query for search_places, or optional city name for get_weather (omit query for current GPS location).' }, number: { type: 'STRING', description: 'Phone number for call_phone; opens dialer with the number filled in and waits for the user to tap Call.' }, hour: { type: 'INTEGER', description: 'Alarm hour in 24-hour format 0-23 for set_alarm.' }, minute: { type: 'INTEGER', description: 'Alarm minute 0-59 for set_alarm.' }, label: { type: 'STRING', description: 'Alarm label for set_alarm.' }, exact: { type: 'BOOLEAN', description: 'Match visible text exactly when true.' } }, required: ['action'] } }] }];
-
 async function askAI() {
-  const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
   const history = messages.slice(-20);
   const systemPrompt = `You are Myk Guardian AI — a sweet, bright, caring Burmese-speaking companion with a cute, lively personality, like a clever close friend who pays attention. Reply in natural everyday Myanmar Burmese, not literal translated Burmese. INTENT ISOLATION RULE: Classify every new user utterance independently by what the user just asked. Do not let the previously open app, a previous song request, or conversation history change the meaning of a clear new request. If the user asks “ငါဘယ်ရောက်နေလဲ”, “ဘယ်ရောက်နေလဲ”, “လက်ရှိတည်နေရာ”, or “where am I”, call phone_action action=get_location immediately even while YouTube is playing; never ask for a song title. Only use media_next/media_previous/media_play_pause when the current utterance explicitly requests a music/media control. LOCATION AND MUSIC ARE SEPARATE INTENTS. BURMESE SPEECH UNDERSTANDING RULE: Understand everyday colloquial Myanmar speech, casual phrasing, polite endings, shortened words, common speech-to-text spelling variants, and Burmese-English code-switching. Interpret the user's intended meaning rather than matching only one exact phrase. For example, “ယူကျု နောက်တစ်ပုဒ်သွား”, “သီချင်းကျော်ပေး”, “ဒီပုဒ်ကျော်”, “နောက်သီချင်းဖွင့်” can all mean media_next; “ခဏရပ်”, “သီချင်းရပ်ထား” can mean media_play_pause; “အသံတိုး/အသံတင်/ပိုကျယ်အောင်” can mean volume_up; “အသံချ/အသံလျှော့ပေး” can mean volume_down; “ပင်မကိုသွား/အိမ်မျက်နှာပြင်” can mean home; and “ပြန်သွား/နောက်သို့ပြန်” can mean back. Recognize informal variants such as “ဖွင့်ပေးပါနော်”, “ဖွင့်ပေးဦး”, “ကျော်ပေးနော်”, “ယူကျူး”, and English app names spoken with Burmese pronunciation. When the intended phone action is clear, call the matching phone_action tool instead of merely translating or repeating the request. If the intent or target is genuinely ambiguous, ask one short clarification. Never claim an action succeeded unless its tool result confirms it. Sound warm and affectionate: use gentle conversational endings such as “နော်”, “လေး”, “ပါနော်” naturally; be a little playful and witty when the moment fits, and show real empathy when the user is frustrated. Use fitting emojis sparingly (for example 🌷😊✨💛), never in every sentence. Avoid stiff, robotic, formal, repetitive, or generic customer-service wording. Do not call the user by an assumed gender or use over-familiar pet names. Vary phrasing and remember context. When giving a direct result such as weather or a calendar answer, preserve the useful facts and add only a short, sweet Burmese comment; do not rewrite it into a long generic answer. If the user is upset, acknowledge it kindly and fix the problem instead of joking. Never invent facts or claim an action succeeded unless the app confirms it. WEATHER RULE: If asked about weather, temperature, rain, or forecast, call phone_action action=get_weather. If a city is named, pass it in query; otherwise omit query so the app uses live GPS. Never invent weather details. Explain current conditions and today and tomorrow temperature and rain chance in friendly Burmese. DATE RULE: For today, tomorrow, the day after tomorrow, or yesterday weekday/date questions, use the phone local calendar; if needed call no tool and calculate from the device date correctly. Never guess a weekday from memory or the model. LOCATION RULE: If asked where the user is, call phone_action action=get_location and use the live GPS result; never guess location from general knowledge. For a named destination or nearby service, call phone_action action=search_places with the destination/category. ALARM RULE: For requests such as “မနက် ၁၀ နာရီ နိုးပါ” or “alarm ကို ၁၀ နာရီထားပေး”, call phone_action action=set_alarm with hour in 24-hour format, minute, and a label. NOTES RULE: If the user only says “Notes” or asks to open Notes, call phone_action action=open_app with app exactly “Notes”; use write_note only when they ask to write/create a note and provide content. MUSIC RULE: If the user asks to play/find/listen to a song and title or singer is missing, ask briefly for it. When supplied, call phone_action action=search_youtube with query containing title and singer. The native action will open YouTube search results and attempt to select a video; if selection fails, say the results are open and ask the user to select one. For a request to write a note, call phone_action action=write_note with the complete note text, not just open_app. PHONE RULE: For a request to open the calling screen, call phone_action action=open_phone. For a request to call a phone number, use action=call_phone with the number; it only opens the dialer with that number prefilled and the user must tap Call. If the user gives only a contact name and no number, open the dialer and ask them to select the contact. Never place calls automatically. For a request to write into an already open text field, use set_text. If the user requests another phone action matching an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.`;
   try {
     let answer = '';
-    if (provider === 'gemini') {
-      const key = localStorage.getItem(GEMINI_KEY_NAME)?.trim();
-      if (!key) throw new Error('Gemini API Key မထည့်ရသေးပါ။ Settings မှာ Gemini ကိုရွေးပြီး Key ထည့်ပါ။');
-      const model = localStorage.getItem(GEMINI_MODEL_NAME) || 'gemini-2.5-flash';
-      const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
-      const contents = history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
-      const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents, tools: GEMINI_TOOLS, generationConfig: { temperature: 0.4, maxOutputTokens: 900 } }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error?.message || 'Gemini HTTP ' + response.status);
-      const parts = data?.candidates?.[0]?.content?.parts || [];
-      const call = parts.find((p: any) => p.functionCall?.name === 'phone_action')?.functionCall;
-      if (call) {
-        const result = await executeAgentAction(String(call.args?.action || ''), call.args || {});
-        if (String(call.args?.action || '') === 'get_weather') {
-          answer = result;
-        } else {
-          const follow = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: systemPrompt }] }, contents: [...contents, { role: 'model', parts: [{ functionCall: { name: 'phone_action', args: call.args } }] }, { role: 'user', parts: [{ functionResponse: { name: 'phone_action', response: { result } } }] }], generationConfig: { temperature: 0.4, maxOutputTokens: 500 } }) });
-          const followData = await follow.json();
-          if (!follow.ok) throw new Error(followData?.error?.message || 'Gemini action result error');
-          answer = followData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('').trim() || result;
-        }
-      } else answer = parts.map((p: any) => p.text || '').join('').trim();
-    } else {
-      const key = localStorage.getItem(KEY_NAME)?.trim();
-      if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
-      const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
-      const message = data?.choices?.[0]?.message;
-      const call = message?.tool_calls?.find((t: any) => t.function?.name === 'phone_action');
-      if (call) {
-        let args: Record<string, unknown> = {};
-        try { args = JSON.parse(call.function.arguments || '{}'); } catch { throw new Error('AI action argument မမှန်ပါ။'); }
-        const result = await executeAgentAction(String(args.action || ''), args);
-        if (String(args.action || '') === 'get_weather') {
-          answer = result;
-        } else {
-          const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
-          const followData = await follow.json();
-          if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
-          answer = followData?.choices?.[0]?.message?.content?.trim() || result;
-        }
-      } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
-    }
+    const key = localStorage.getItem(KEY_NAME)?.trim();
+    if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
+    const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
+    const message = data?.choices?.[0]?.message;
+    const call = message?.tool_calls?.find((t: any) => t.function?.name === 'phone_action');
+    if (call) {
+      let args: Record<string, unknown> = {};
+      try { args = JSON.parse(call.function.arguments || '{}'); } catch { throw new Error('AI action argument မမှန်ပါ။'); }
+      const result = await executeAgentAction(String(args.action || ''), args);
+      if (String(args.action || '') === 'get_weather') {
+        answer = result;
+      } else {
+        const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
+        const followData = await follow.json();
+        if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
+        answer = followData?.choices?.[0]?.message?.content?.trim() || result;
+      }
+    } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
     messages.push({ role: 'assistant', content: answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။' });
   } catch (err) {
     messages.push({ role: 'assistant', content: 'AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။' });
@@ -401,42 +371,129 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
 function renderSettings(view: HTMLElement) {
   const key = localStorage.getItem(KEY_NAME) || '';
   const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-  const geminiKey = localStorage.getItem(GEMINI_KEY_NAME) || '';
-  const geminiModel = localStorage.getItem(GEMINI_MODEL_NAME) || 'gemini-2.5-flash';
-  const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
-  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">AI + PHONE ACTIONS</span></div>
+  view.innerHTML = \`<div class="section-head"><div><span class="eyebrow">SYSTEM CONFIGURATION</span><h2>ဆက်တင်</h2></div><span class="pill">OPENROUTER</span></div>
     <div class="card settings-card">
-      <label for="provider">AI Provider</label><select id="provider"><option value="openrouter" ${provider==='openrouter'?'selected':''}>OpenRouter (GPT နှင့် အခြား Models)</option><option value="gemini" ${provider==='gemini'?'selected':''}>Google Gemini API</option></select>
-      <p class="muted">Provider တစ်ခုရွေးပြီး သက်ဆိုင်ရာ API Key ထည့်ပါ။ API Key ကို ဒီဖုန်းရဲ့ localStorage ထဲမှာ သိမ်းပါတယ်။</p>
-      <label for="apiKey">OpenRouter API Key</label><input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}">
-      <label for="modelId">OpenRouter Model ID</label><input id="modelId" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><small>ဥပမာ openai/gpt-4o-mini — OpenRouter မှာ ရရှိနိုင်မှုနဲ့ ကုန်ကျစရိတ်ကို စစ်ပါ။</small>
+      <label for="apiKey">OpenRouter API Key</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="\${esc(key)}">
+      <small>API Key ကို ဒီဖုန်းထဲမှာပဲ သိမ်းထားပါတယ်။ Key ကို အခြားသူထံ မမျှဝေပါနဲ့။</small>
+      <button class="secondary wide" id="showKey">API Key ပြ / ဖျောက်</button>
       <hr>
-      <label for="geminiKey">Gemini API Key</label><input id="geminiKey" type="password" autocomplete="off" placeholder="Gemini API Key" value="${esc(geminiKey)}">
-      <label for="geminiModel">Gemini Model ID</label><input id="geminiModel" value="${esc(geminiModel)}" placeholder="gemini-2.5-flash">
+      <label for="modelSearch">Model ရှာရန်</label>
+      <input id="modelSearch" type="text" placeholder="ဥပမာ - Gemini Flash, GPT, Qwen">
+      <label for="modelSelect">OpenRouter Model ရွေးရန်</label>
+      <select id="modelSelect"><option value="\${esc(model)}" selected>\${esc(model)} · လက်ရှိရွေးထားသည်</option></select>
+      <small id="modelPriceInfo">Model စာရင်းရယူပြီးနောက် token ဈေးနှုန်းကို ပြပါမယ်။ ဈေးနှုန်းက OpenRouter က ပေးတဲ့ အချက်အလက်အပေါ် မူတည်ပါတယ်။</small>
+      <button class="primary wide" id="loadModels">OpenRouter မှ Model စာရင်းရယူရန်</button>
+      <p id="modelStatus" class="muted" aria-live="polite">Model ရွေးချယ်ပြီး Settings သိမ်းပါ။ ကုန်ကျစရိတ်ကို Model အလိုက် ကွာခြားနိုင်ပါတယ်။</p>
       <button class="primary wide" id="saveSettings">Settings သိမ်းမယ်</button>
-      <button class="secondary wide" id="showKey">OpenRouter Key ပြ/ဖျောက်</button>
-      <button class="secondary wide" id="showGeminiKey">Gemini Key ပြ/ဖျောက်</button>
-      <button class="danger wide" id="deleteKeys">API Key နှစ်ခုလုံး ဖျက်မယ်</button>
+      <button class="danger wide" id="deleteKeys">OpenRouter API Key ဖျက်မယ်</button>
     </div>
     <div class="card">
       <div class="card-title">🎙 ဗေဒါရီ Voice Assistant · Wake Word</div>
-      <p class="muted">“ဗေဒါရီရေ၊ …” လို့ခေါ်ပြီး ဖုန်းမျက်နှာပြင်ပိတ်နေချိန်မှာပါ နားထောင်နိုင်ရန် Android foreground microphone service ကို ကိုယ်တိုင်ဖွင့်ပါ။ နားထောင်နေစဉ် Notification အမြဲပြမည်။ Stop လုပ်ရန် ဒီနေရာ သို့မဟုတ် Notification ကို အသုံးပြုပါ။</p>
-      <p class="muted"><b>သိထားရန်:</b> ဒီအဆင့်က Wake Word ကိုသာ ရှာဖွေသည်။ Voice ID မလိုဘဲ မြန်မာစကားနဲ့ ညွှန်ကြားချက်တွေကို နားလည်ဖို့ အဓိကထားထားပါတယ်။ Android/Google Speech Recognition ရရှိနိုင်မှု၊ အင်တာနက်နှင့် ဖုန်းထုတ်လုပ်သူ၏ background ကန့်သတ်ချက်များအပေါ် မူတည်သည်။ Lock PIN/လက်ဗွေကို ကျော်မဖြေပါ။</p>
+      <p class="muted">“ဗေဒါရီရေ၊ …” လို့ခေါ်ပြီး နားထောင်နိုင်ရန် Android foreground microphone service ကို ကိုယ်တိုင်ဖွင့်ပါ။ နားထောင်နေစဉ် Notification ပြမည်။</p>
+      <p class="muted"><b>သိထားရန်:</b> Speech Recognition ရရှိနိုင်မှု၊ အင်တာနက်နဲ့ Android background ကန့်သတ်ချက်များအပေါ် မူတည်သည်။ Lock PIN/လက်ဗွေကို ကျော်ဖြေမည်မဟုတ်ပါ။</p>
       <div class="status-row"><div><b>Wake Word နားထောင်မှု</b><small id="vedariWakeStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><span class="state" id="vedariWakeState">CHECKING</span></div>
       <button class="primary wide" id="startVedariWake">ဗေဒါရီ နားထောင်မှု စတင်ရန်</button>
       <button class="secondary wide" id="stopVedariWake">နားထောင်မှု ရပ်ရန်</button>
     </div>
     <div class="card">
-      <div class="card-title">🧠 မြန်မာစကားနားလည်မှုနှင့် စကားသင်ယူခြင်း</div>
-      <p class="muted">Voice ID မလိုပါ။ ဗေဒါရီက မြန်မာစကားပြောပုံ၊ အတိုကောက်၊ အဓိပ္ပာယ်တူ စကားလုံးတွေကို ပိုကောင်းကောင်းနားလည်စေရန် အသုံးပြုနိုင်ပါတယ်။ Speech Recognition ကြားမှားတဲ့စကားကို အောက်မှာ မှန်ကန်တဲ့အမိန့်နဲ့ တွဲမှတ်ထားနိုင်ပါတယ်။</p>
-      <label for="heardPhrase">ဗေဒါရီ ကြားမိတဲ့ စကား</label><input id="heardPhrase" placeholder="ဥပမာ - ယူကျု နောက်တစ်ပုဒ်ကျော်ပေး">
-      <label for="correctPhrase">ကိုယ်တကယ်ခိုင်းချင်တဲ့ အမိန့်</label><input id="correctPhrase" placeholder="ဥပမာ - YouTube မှာ နောက်တစ်ပုဒ်ကျော်ပေး">
-      <button class="primary wide" id="savePhrase">ဒီစကားကို မှတ်သားရန်</button>
+      <div class="card-title">🎙 မြန်မာစကား ကြားမှားမှု ပြင်ဆင်ခြင်း</div>
+      <p class="muted">Voice ID မလိုပါ။ Speech Recognition က ကြားမှားတတ်တဲ့ စကားကို မှန်ကန်တဲ့အမိန့်နဲ့ တွဲမှတ်ထားနိုင်ပါတယ်။ ဒီအရာက ရေရှည် AI Memory စနစ်မဟုတ်ပါ။</p>
+      <label for="heardPhrase">ကြားမိတဲ့ စကား</label><input id="heardPhrase" placeholder="ဥပမာ - ယူကျု နောက်တစ်ပုဒ်ကျော်ပေး">
+      <label for="correctPhrase">မှန်ကန်တဲ့ အမိန့်</label><input id="correctPhrase" placeholder="ဥပမာ - YouTube မှာ နောက်တစ်ပုဒ်ကျော်ပေး">
+      <button class="primary wide" id="savePhrase">စကားပြင်ဆင်မှု သိမ်းရန်</button>
       <div id="phraseList" class="muted"></div>
       <p id="voiceLearningResult" class="muted" aria-live="polite"></p>
-    </div>
-    <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
-    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
+    </div>\`;
+  const modelSelect = view.querySelector<HTMLSelectElement>('#modelSelect')!;
+  const modelSearch = view.querySelector<HTMLInputElement>('#modelSearch')!;
+  const modelPriceInfo = view.querySelector<HTMLElement>('#modelPriceInfo')!;
+  const modelStatus = view.querySelector<HTMLElement>('#modelStatus')!;
+  let availableModels: Array<{id:string; name:string; prompt:string; completion:string; context:number}> = [];
+  const moneyPerMillion = (price: string) => {
+    const n = Number(price);
+    if (!Number.isFinite(n)) return 'ဈေးနှုန်းမသိ';
+    if (n === 0) return 'အခမဲ့';
+    return '$' + (n * 1_000_000).toLocaleString('en-US', {maximumFractionDigits: 4});
+  };
+  const modelLabel = (m: {id:string;name:string;prompt:string;completion:string}) =>
+    \`\${m.name} · \${m.id} · In \${moneyPerMillion(m.prompt)} / Out \${moneyPerMillion(m.completion)} per 1M tokens\`;
+  const renderModelOptions = () => {
+    const q = modelSearch.value.trim().toLowerCase();
+    const filtered = availableModels.filter(m => !q || (m.id + ' ' + m.name).toLowerCase().includes(q));
+    const selected = modelSelect.value || localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
+    modelSelect.innerHTML = '';
+    if (!filtered.some(m => m.id === selected)) {
+      const option = document.createElement('option');
+      option.value = selected; option.textContent = selected + ' · လက်ရှိရွေးထားသည်'; modelSelect.appendChild(option);
+    }
+    filtered.slice(0, 150).forEach(m => {
+      const option = document.createElement('option');
+      option.value = m.id; option.textContent = modelLabel(m);
+      if (m.id === selected) option.selected = true;
+      modelSelect.appendChild(option);
+    });
+    updateSelectedModelInfo();
+    modelStatus.textContent = filtered.length
+      ? \`မော်ဒယ် \${filtered.length} ခု တွေ့ရှိသည်။ ဈေးသက်သာသော မော်ဒယ်များကို အပေါ်ဘက်တွင် ဦးစားပေးထားပါတယ်။\`
+      : availableModels.length ? 'ရှာဖွေမှုနဲ့ ကိုက်ညီတဲ့ Model မရှိပါ။ စာလုံးအနည်းငယ်ပဲ ရိုက်ရှာကြည့်ပါ။' : modelStatus.textContent;
+  };
+  const updateSelectedModelInfo = () => {
+    const m = availableModels.find(item => item.id === modelSelect.value);
+    modelPriceInfo.textContent = m
+      ? \`Input: \${moneyPerMillion(m.prompt)} / 1M tokens · Output: \${moneyPerMillion(m.completion)} / 1M tokens\${m.context ? ' · Context: ' + m.context.toLocaleString('en-US') : ''}. API usage အမှန်တကယ်ကုန်ကျစရိတ်ကို OpenRouter Dashboard မှာ ပြန်စစ်ပါ။\`
+      : 'ဒီ Model အတွက် ဈေးနှုန်းကို မရသေးပါ။ Model စာရင်းရယူရန် ခလုတ်ကို နှိပ်ပါ။';
+  };
+  modelSearch.addEventListener('input', renderModelOptions);
+  modelSelect.addEventListener('change', updateSelectedModelInfo);
+  view.querySelector<HTMLButtonElement>('#loadModels')!.addEventListener('click', async () => {
+    const apiKey = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
+    if (!apiKey) { modelStatus.textContent = 'Model စာရင်းရယူဖို့ OpenRouter API Key အရင်ထည့်ပါ။'; return; }
+    const button = view.querySelector<HTMLButtonElement>('#loadModels')!;
+    button.disabled = true; modelStatus.textContent = 'OpenRouter Model စာရင်းကို ရယူနေသည်…';
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: { 'Authorization': 'Bearer ' + apiKey, 'X-Title': 'Myk Guardian AI' }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
+      availableModels = (Array.isArray(data?.data) ? data.data : [])
+        .filter((m: any) => typeof m?.id === 'string' && m?.pricing)
+        .map((m: any) => ({
+          id: String(m.id), name: String(m.name || m.id),
+          prompt: String(m.pricing.prompt ?? '0'), completion: String(m.pricing.completion ?? '0'),
+          context: Number(m.context_length || 0)
+        }))
+        .sort((x, y) => (Number(x.prompt) + Number(x.completion)) - (Number(y.prompt) + Number(y.completion)));
+      if (!availableModels.length) throw new Error('ဈေးနှုန်းပါသော Model စာရင်း မရရှိပါ။');
+      renderModelOptions();
+      modelStatus.textContent = \`Model \${availableModels.length} ခု ရရှိပါပြီ။ စျေးနှုန်းနဲ့ ကိုက်ညီတာကို ရွေးပါ။\`;
+    } catch (err) {
+      modelStatus.textContent = 'Model စာရင်းမရပါ: ' + (err instanceof Error ? err.message : 'Network error') + '။ အင်တာနက်နဲ့ API Key ကို စစ်ပါ။';
+    } finally { button.disabled = false; }
+  });
+  view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
+    const apiKey = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
+    const selectedModel = modelSelect.value.trim();
+    if (apiKey && !apiKey.startsWith('sk-or-') && !confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return;
+    if (apiKey) localStorage.setItem(KEY_NAME, apiKey); else localStorage.removeItem(KEY_NAME);
+    localStorage.setItem(MODEL_NAME, selectedModel || DEFAULT_MODEL);
+    // Remove legacy Gemini/provider settings so the app has one clear API configuration.
+    localStorage.removeItem('myk.ai.provider');
+    localStorage.removeItem('myk.gemini.key');
+    localStorage.removeItem('myk.gemini.model');
+    alert('OpenRouter Settings သိမ်းပြီးပါပြီ။ Model: ' + (selectedModel || DEFAULT_MODEL)); render();
+  });
+  view.querySelector<HTMLButtonElement>('#showKey')!.addEventListener('click', () => {
+    const input = view.querySelector<HTMLInputElement>('#apiKey')!;
+    input.type = input.type === 'password' ? 'text' : 'password';
+  });
+  view.querySelector<HTMLButtonElement>('#deleteKeys')!.addEventListener('click', () => {
+    if (!confirm('ဒီဖုန်းထဲက OpenRouter API Key ကို ဖျက်မှာ သေချာပါသလား?')) return;
+    localStorage.removeItem(KEY_NAME);
+    view.querySelector<HTMLInputElement>('#apiKey')!.value = '';
+    alert('OpenRouter API Key ကို ဖျက်လိုက်ပါပြီ။');
+  });
   const wakeStatus = view.querySelector<HTMLElement>('#vedariWakeStatus')!;
   const wakeState = view.querySelector<HTMLElement>('#vedariWakeState')!;
   const refreshWakeStatus = async () => {
@@ -492,32 +549,9 @@ function renderSettings(view: HTMLElement) {
       savePhraseCorrection(heard, intended);
       view.querySelector<HTMLInputElement>('#heardPhrase')!.value = '';
       view.querySelector<HTMLInputElement>('#correctPhrase')!.value = '';
-      voiceResult.textContent = 'စကားပြင်ဆင်မှုကို ဖုန်းထဲမှာ မှတ်သားပြီးပါပြီ။ နောက်တစ်ကြိမ် transcript အတိအကျတူရင် အလိုအလျောက် ပြောင်းပေးမယ်။';
+      voiceResult.textContent = 'စကားပြင်ဆင်မှုကို ဖုန်းထဲမှာ မှတ်သားပြီးပါပြီ။';
       refreshVoiceProfile();
     } catch (err) { voiceResult.textContent = err instanceof Error ? err.message : 'စကားကို မသိမ်းနိုင်ပါ။'; }
-  });
-  refreshVoiceProfile();
-  view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
-    const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
-    const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
-    const gk = view.querySelector<HTMLInputElement>('#geminiKey')!.value.trim();
-    const gm = view.querySelector<HTMLInputElement>('#geminiModel')!.value.trim();
-    const p = view.querySelector<HTMLSelectElement>('#provider')!.value;
-    if (k && !k.startsWith('sk-or-') && !confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return;
-    if (k) localStorage.setItem(KEY_NAME, k); else localStorage.removeItem(KEY_NAME);
-    if (m) localStorage.setItem(MODEL_NAME, m); else localStorage.setItem(MODEL_NAME, DEFAULT_MODEL);
-    if (gk) localStorage.setItem(GEMINI_KEY_NAME, gk); else localStorage.removeItem(GEMINI_KEY_NAME);
-    if (gm) localStorage.setItem(GEMINI_MODEL_NAME, gm); else localStorage.setItem(GEMINI_MODEL_NAME, 'gemini-2.5-flash');
-    localStorage.setItem(PROVIDER_NAME, p);
-    alert('Settings သိမ်းပြီးပါပြီ။ လက်ရှိ Provider: ' + (p === 'gemini' ? 'Gemini' : 'OpenRouter')); render();
-  });
-  view.querySelector<HTMLButtonElement>('#showKey')!.addEventListener('click', () => { const i = view.querySelector<HTMLInputElement>('#apiKey')!; i.type = i.type === 'password' ? 'text' : 'password'; });
-  view.querySelector<HTMLButtonElement>('#showGeminiKey')!.addEventListener('click', () => { const i = view.querySelector<HTMLInputElement>('#geminiKey')!; i.type = i.type === 'password' ? 'text' : 'password'; });
-  view.querySelector<HTMLButtonElement>('#deleteKeys')!.addEventListener('click', () => {
-    if (!confirm('ဒီဖုန်းထဲက API Key နှစ်ခုလုံးကို ဖျက်မှာ သေချာပါသလား?')) return;
-    localStorage.removeItem(KEY_NAME); localStorage.removeItem(GEMINI_KEY_NAME);
-    view.querySelector<HTMLInputElement>('#apiKey')!.value = ''; view.querySelector<HTMLInputElement>('#geminiKey')!.value = '';
-    alert('API Key နှစ်ခုလုံး ဖျက်ပြီးပါပြီ။');
   });
 }
 
