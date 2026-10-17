@@ -7,7 +7,7 @@ import { tryNativeCommand, executeAgentAction } from './native-actions';
 import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, removePhraseCorrection } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; scanPersonalDeviceData(): Promise<{ installedApps: Array<{name:string;packageName:string}>; imageCount:number; videoCount:number; usageAccessGranted:boolean; usageLast7Days:Array<{packageName:string;appName:string;foregroundMs7Days:number}>; callLogPermissionGranted:boolean; recentCalls:Array<{type:number;date:number;durationSeconds:number}>; scannedAt:number }>; openUsageAccessSettings(): Promise<void>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean; usageAccessGranted?: boolean; mediaReadGranted?: boolean; callLogGranted?: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; scanPersonalDeviceData(): Promise<{ installedApps: Array<{name:string;packageName:string}>; imageCount:number; videoCount:number; mediaReadGranted:boolean; usageAccessGranted:boolean; usageLast7Days:Array<{packageName:string;appName:string;foregroundMs7Days:number}>; callLogPermissionGranted:boolean; recentCalls:Array<{type:number;date:number;durationSeconds:number}>; scannedAt:number }>; openUsageAccessSettings(): Promise<void>; openMykAppSettings(): Promise<void>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -393,6 +393,8 @@ function renderSettings(view: HTMLElement) {
       <p class="muted">ခလုတ်တစ်ချက်နှိပ်ပြီး ဖုန်းထဲက ဖတ်ခွင့်ရှိသော App စာရင်း၊ ဓာတ်ပုံ/ဗီဒီယို အရေအတွက်၊ အသုံးပြုချိန်စာရင်း (Usage Access ခွင့်ပြုထားလျှင်)၊ Myk data နှင့် ခွင့်ပြုထားသော recent notifications ကို စစ်ဆေးပါမယ်။ ဖိုင်ရွေးထည့်ရန် မလိုပါ။</p>
       <button class="primary wide" id="scanPersonalMemory">📡 ဖုန်းကို အလိုအလျောက် Scan လုပ်ပြီး Memory ဖန်တီးရန်</button>
       <button class="secondary wide" id="enableUsageAccess">App အသုံးပြုချိန်မှတ်တမ်း ခွင့်ပြုရန်</button>
+      <button class="secondary wide" id="openMykAppSettings">Myk ရဲ့ Microphone / Location / Photos / Call Log ခွင့်ပြုချက်များဖွင့်ရန်</button>
+      <p class="muted">မှတ်ချက် — ဒီခလုတ်က Myk ကိုယ်တိုင်ရဲ့ ခွင့်ပြုချက်စာမျက်နှာကို ဖွင့်ပေးတာပါ။ အခြား App တွေရဲ့ ခွင့်ပြုချက်ကို Myk က အလိုအလျောက် ပြောင်းပေးလို့မရပါ။ Accessibility နဲ့ Notification Access ကိုလည်း Android က သီးခြားအတည်ပြုရပါမယ်။</p>
       <p id="memoryScanStatus" class="muted" aria-live="polite">Scan မစတင်ရသေးပါ။ အချက်အလက်များကို ဖုန်းပေါ်တွင် စုစည်းပြီး Preview ပြပေးပါမယ်။</p>
       <div id="memoryPreview" class="muted"></div>
       <button class="secondary wide" id="downloadMemoryJson" disabled>Memory JSON ဖိုင် သိမ်းရန်</button>
@@ -577,6 +579,10 @@ function renderSettings(view: HTMLElement) {
     const a = document.createElement('a'); a.href = url; a.download = name; a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
   };
+  view.querySelector<HTMLButtonElement>('#openMykAppSettings')!.addEventListener('click', async () => {
+    try { await MykNative.openMykAppSettings(); scanStatus.textContent = 'Android App info ဖွင့်ထားပါတယ်။ Permissions ထဲမှာ Myk အတွက် လိုအပ်တာတွေကို Allow လုပ်ပြီး ပြန်လာကာ Scan ထပ်လုပ်ပါ။'; }
+    catch (err) { scanStatus.textContent = 'App permission Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+  });
   view.querySelector<HTMLButtonElement>('#enableUsageAccess')!.addEventListener('click', async () => {
     try { await MykNative.openUsageAccessSettings(); scanStatus.textContent = 'Android Settings ထဲမှာ Myk Guardian AI ကို Usage Access ခွင့်ပြုပြီး ဒီ App ကို ပြန်ဖွင့်ကာ Scan ခလုတ်ကို ထပ်နှိပ်ပါ။'; }
     catch (err) { scanStatus.textContent = 'Usage Access Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
@@ -620,7 +626,7 @@ function renderSettings(view: HTMLElement) {
           note:'Automatic device scan. Includes app inventory, accessible media counts, usage stats only when Usage Access is granted, call logs only when Android permission is already granted, Myk local corrections, and recent notifications only when enabled.' },
         deviceOverview: {
           installedApps: device.installedApps,
-          media: { imageCount:device.imageCount, videoCount:device.videoCount },
+          media: { imageCount:device.imageCount, videoCount:device.videoCount, readPermissionGranted:device.mediaReadGranted },
           usageAccessGranted:device.usageAccessGranted,
           usageLast7Days:device.usageLast7Days,
           callLogPermissionGranted:device.callLogPermissionGranted,
@@ -639,7 +645,7 @@ function renderSettings(view: HTMLElement) {
       memoryMarkdown = '# Myk Personal Memory (Draft)\\n\\n' +
         '- Generated: ' + data.generatedAt + '\\n' +
         '- Installed apps: ' + device.installedApps.length + '\\n' +
-        '- Images: ' + device.imageCount + ' · Videos: ' + device.videoCount + '\\n' +
+        '- Images: ' + device.imageCount + ' · Videos: ' + device.videoCount + ' · Media permission: ' + (device.mediaReadGranted?'granted':'not granted') + '\\n' +
         '- Usage Access: ' + (device.usageAccessGranted?'enabled':'not enabled') + '\\n' +
         '- Usage records: ' + device.usageLast7Days.length + ' · Recent calls read: ' + device.recentCalls.length + '\\n' +
         '- Recent notifications: ' + notificationItems.length + '\\n\\n## Possible topic signals\\n' +
@@ -649,7 +655,7 @@ function renderSettings(view: HTMLElement) {
         '- Image/video files are counted, not visually or audio analysed. Internet data usage does not reveal which pages or videos were watched.\\n' +
         '- Call log details are included only if Android permission is already granted.\\n' +
         '- Personal data is not automatically sent to OpenRouter. Review this draft before using it as memory.';
-      memoryPreview.innerHTML = '<b>Scan ပြီးပါပြီ</b><div>ထည့်သွင်းထားသော App: '+device.installedApps.length+'</div><div>ဓာတ်ပုံ: '+device.imageCount+' · ဗီဒီယို: '+device.videoCount+'</div><div>Usage Access: '+(device.usageAccessGranted?'ဖွင့်ထားသည်':'မဖွင့်ရသေးပါ')+' · Usage records: '+device.usageLast7Days.length+'</div><div>Call log: '+(device.callLogPermissionGranted?device.recentCalls.length+' ခု ဖတ်ရရှိ':'ခွင့်ပြုချက်မရှိ')+'</div><div>Notification: '+notificationItems.length+' ခု</div><p>အချက်အလက်များသည် draft ဖြစ်ပြီး စိတ်ဝင်စားမှုဟု အလိုအလျောက် အတည်မပြုပါ။</p>';
+      memoryPreview.innerHTML = '<b>Scan ပြီးပါပြီ</b><div>ထည့်သွင်းထားသော App: '+device.installedApps.length+'</div><div>ဓာတ်ပုံ: '+device.imageCount+' · ဗီဒီယို: '+device.videoCount+' · Media ခွင့်ပြုချက်: '+(device.mediaReadGranted?'ရရှိ':'မရရှိ')+'</div><div>Usage Access: '+(device.usageAccessGranted?'ဖွင့်ထားသည်':'မဖွင့်ရသေးပါ')+' · Usage records: '+device.usageLast7Days.length+'</div><div>Call log: '+(device.callLogPermissionGranted?device.recentCalls.length+' ခု ဖတ်ရရှိ':'ခွင့်ပြုချက်မရှိ')+'</div><div>Notification: '+notificationItems.length+' ခု</div><p>အချက်အလက်များသည် draft ဖြစ်ပြီး စိတ်ဝင်စားမှုဟု အလိုအလျောက် အတည်မပြုပါ။</p>';
       jsonDownload.disabled=false; mdDownload.disabled=false;
       if (device.usageAccessGranted) scanStatus.textContent='ဖုန်း Data scan ပြီးပါပြီ။ Preview စစ်ပြီး Memory ဖိုင်ကို သိမ်းနိုင်ပါတယ်။';
     } catch (err) {
