@@ -582,7 +582,7 @@ function renderSettings(view: HTMLElement) {
     a.href = url; a.download = name; a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
   };
-  const safeText = (s: string) => s.replace(/\\s+/g, ' ').trim();
+  const safeText = (s: string) => s.replace(/\s+/g, ' ').trim();
   view.querySelector<HTMLButtonElement>('#scanPersonalMemory')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#scanPersonalMemory')!;
     button.disabled = true;
@@ -597,7 +597,7 @@ function renderSettings(view: HTMLElement) {
           name:file.name, type:file.type || 'unknown', size:file.size,
           modifiedAt: new Date(file.lastModified).toISOString()
         };
-        if (file.size <= 2_000_000 && (/\\.(json|txt|html?|csv|md|xml)$/i.test(file.name) || file.type.startsWith('text/'))) {
+        if (file.size <= 2_000_000 && (/\.(json|txt|html?|csv|md|xml)$/i.test(file.name) || file.type.startsWith('text/'))) {
           const raw = await file.text();
           const excerpt = safeText(raw).slice(0, 12000);
           item.textExcerpt = excerpt;
@@ -626,7 +626,7 @@ function renderSettings(view: HTMLElement) {
         notificationItems.map(n=>n.title + ' ' + n.text).join(' ') + ' ' +
         Object.values(corrections).join(' ');
       const patterns = [
-        ['YouTube', /youtube|youtu\\.be|ယူကျု/gi],
+        ['YouTube', /youtube|youtu\.be|ယူကျု/gi],
         ['TikTok', /tiktok|tik tok|တစ်တော့/gi],
         ['Gemini', /gemini|ဂျမီနိုင်း/gi],
         ['ChatGPT', /chatgpt|openai|ချတ်ဂျီပီတီ/gi],
@@ -662,14 +662,14 @@ function renderSettings(view: HTMLElement) {
       };
       memoryDraft = data;
       memoryMarkdown = '# Myk Personal Memory (Draft)\\n\\n' +
-        '- Generated: ' + data.generatedAt + '\\n' +
-        '- Imported files: ' + imported.length + '\\n' +
-        '- Recent notifications included: ' + notificationItems.length + '\\n\\n' +
+        '- Generated: ' + data.generatedAt + '\n' +
+        '- Imported files: ' + imported.length + '\n' +
+        '- Recent notifications included: ' + notificationItems.length + '\n\\n' +
         '## Possible topic signals\\n' +
-        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>'- ' + t.topic + ': ' + t.mentions + ' mention(s) — review before treating as a preference').join('\\n') : '- No strong topic signals found in the selected data.') +
-        '\\n\\n## Voice command corrections\\n' +
-        (localSignals.voiceCommandCorrections.length ? localSignals.voiceCommandCorrections.map(p=>'- Heard: ' + p.heard + ' → Intended: ' + p.intended).join('\\n') : '- None saved.') +
-        '\\n\\n## Privacy and limitations\\n' +
+        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>'- ' + t.topic + ': ' + t.mentions + ' mention(s) — review before treating as a preference').join('\n') : '- No strong topic signals found in the selected data.') +
+        '\n\\n## Voice command corrections\\n' +
+        (localSignals.voiceCommandCorrections.length ? localSignals.voiceCommandCorrections.map(p=>'- Heard: ' + p.heard + ' → Intended: ' + p.intended).join('\n') : '- None saved.') +
+        '\n\\n## Privacy and limitations\\n' +
         '- Generated locally in the app; not automatically sent to OpenRouter.\\n' +
         '- Selected image/video files are catalogued by name/type/size only; their visual/audio content is not analysed.\\n' +
         '- App private databases, full YouTube/TikTok history, full Gemini/ChatGPT conversations, and internet browsing history are not automatically accessible. Import official export files to include their contents.\\n' +
