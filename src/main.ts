@@ -146,7 +146,7 @@ async function askAI() {
     } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
     messages.push({ role: 'assistant', content: answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။' });
   } catch (err) {
-    messages.push({ role: 'assistant', content: 'AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။' });
+    messages.push({ role: 'assistant', content: 'AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက OpenRouter API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။' });
   }
   busy = false; render();
 }
@@ -379,7 +379,7 @@ function renderSettings(view: HTMLElement) {
       <button class="secondary wide" id="showKey">API Key ပြ / ဖျောက်</button>
       <hr>
       <label for="modelSearch">Model ရှာရန်</label>
-      <input id="modelSearch" type="text" placeholder="ဥပမာ - Gemini Flash, GPT, Qwen">
+      <input id="modelSearch" type="text" placeholder="ဥပမာ - GPT, Qwen, Llama">
       <label for="modelSelect">OpenRouter Model ရွေးရန်</label>
       <select id="modelSelect"><option value="${esc(model)}" selected>${esc(model)} · လက်ရှိရွေးထားသည်</option></select>
       <small id="modelPriceInfo">Model စာရင်းရယူပြီးနောက် token ဈေးနှုန်းကို ပြပါမယ်။ ဈေးနှုန်းက OpenRouter က ပေးတဲ့ အချက်အလက်အပေါ် မူတည်ပါတယ်။</small>
@@ -458,7 +458,7 @@ function renderSettings(view: HTMLElement) {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
       availableModels = (Array.isArray(data?.data) ? data.data : [])
-        .filter((m: any) => typeof m?.id === 'string' && m?.pricing)
+        .filter((m: any) => typeof m?.id === 'string' && m?.pricing && (!Array.isArray(m.supported_parameters) || m.supported_parameters.includes('tools')))
         .map((m: any) => ({
           id: String(m.id), name: String(m.name || m.id),
           prompt: String(m.pricing.prompt ?? '0'), completion: String(m.pricing.completion ?? '0'),
