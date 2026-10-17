@@ -30,7 +30,17 @@ class VedariWakeService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        // Android 10+ supports an explicit foreground-service type. On Android 14
+        // this must match the manifest's microphone type and granted RECORD_AUDIO.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -50,6 +60,8 @@ class VedariWakeService : Service() {
 
     private fun startRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return
         }
@@ -115,7 +127,8 @@ class VedariWakeService : Service() {
     }
 
     private fun isWakeCommand(value: String): Boolean {
-        val normalized = value.lowercase(Locale.ROOT).replace(" ", "")
+        val normalized = value.lowercase(Locale.ROOT)
+            .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
         return listOf("ဗေဒါရီ", "ဗေဒါရီရေ", "ဗေဒါရီလေး").any { normalized.contains(it) }
     }
 
@@ -135,9 +148,18 @@ class VedariWakeService : Service() {
 
     private fun openAppWithCommand(command: String) {
         val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        launch.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+        )
         launch.putExtra(EXTRA_WAKE_COMMAND, command)
-        try { startActivity(launch) } catch (_: Exception) { /* OEM background-launch policy may block this. */ }
+        try {
+            startActivity(launch)
+        } catch (_: Exception) {
+            // Android/OEM policy may block launching an Activity from the background.
+            // The command remains saved and will be consumed when the user returns to Myk.
+        }
     }
 
     private fun wakeScreenBriefly() {
