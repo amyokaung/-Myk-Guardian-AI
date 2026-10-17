@@ -52,6 +52,20 @@ class AccessibilityBridgePlugin : Plugin() {
              context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
         result.put("microphoneGranted", microphoneGranted)
         result.put("locationGranted", locationGranted)
+        val appOps = context.getSystemService(android.content.Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        @Suppress("DEPRECATION")
+        val usageMode = appOps.checkOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), context.packageName)
+        result.put("usageAccessGranted", usageMode == android.app.AppOpsManager.MODE_ALLOWED)
+        val mediaReadGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                context.checkSelfPermission("android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        } else true
+        result.put("mediaReadGranted", mediaReadGranted)
+        val callLogGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            context.checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+        result.put("callLogGranted", callLogGranted)
         call.resolve(result)
     }
 
@@ -81,6 +95,12 @@ class AccessibilityBridgePlugin : Plugin() {
                         context.contentResolver.query(uri, projection, null, null, null)?.use { cursor -> cursor.count } ?: 0
                     } catch (_: Exception) { 0 }
                 }
+                val mediaReadGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                        context.checkSelfPermission("android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                } else true
                 val images = countMedia(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.Images.Media._ID))
                 val videos = countMedia(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.Video.Media._ID))
 
@@ -130,6 +150,7 @@ class AccessibilityBridgePlugin : Plugin() {
                 result.put("installedApps", appArray)
                 result.put("imageCount", images)
                 result.put("videoCount", videos)
+                result.put("mediaReadGranted", mediaReadGranted)
                 result.put("usageAccessGranted", usageAllowed)
                 result.put("usageLast7Days", usageArray)
                 result.put("callLogPermissionGranted", callLogAllowed)
@@ -145,6 +166,18 @@ class AccessibilityBridgePlugin : Plugin() {
     @PluginMethod
     fun openUsageAccessSettings(call: PluginCall) {
         openSettings(call, Settings.ACTION_USAGE_ACCESS_SETTINGS)
+    }
+
+    @PluginMethod
+    fun openMykAppSettings(call: PluginCall) {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: Exception) {
+            call.reject("Myk App Permission Settings မဖွင့်နိုင်ပါ: ${error.message}", error)
+        }
     }
 
     @PluginMethod
