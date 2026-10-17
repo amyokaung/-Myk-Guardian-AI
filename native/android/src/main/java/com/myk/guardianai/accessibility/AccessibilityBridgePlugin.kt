@@ -11,6 +11,7 @@ import android.location.Geocoder
 import android.provider.AlarmClock
 import java.util.Locale
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import com.getcapacitor.JSObject
@@ -226,11 +227,40 @@ class AccessibilityBridgePlugin : Plugin() {
                     } catch (_: SecurityException) { }
                 }
 
+                val allFilesAccessGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+                val sharedFiles = JSArray()
+                if (allFilesAccessGranted) {
+                    val root = Environment.getExternalStorageDirectory()
+                    val queue = java.util.ArrayDeque<Pair<java.io.File, Int>>()
+                    queue.add(root to 0)
+                    var fileCount = 0
+                    while (queue.isNotEmpty() && fileCount < 200) {
+                        val (folder, depth) = queue.removeFirst()
+                        val children = try { folder.listFiles() } catch (_: Exception) { null } ?: continue
+                        for (child in children) {
+                            if (fileCount >= 200) break
+                            if (child.isDirectory) {
+                                if (depth < 3 && child.name != "Android") queue.add(child to depth + 1)
+                            } else if (child.isFile && child.canRead()) {
+                                val item = JSObject()
+                                item.put("name", child.name)
+                                item.put("path", child.absolutePath)
+                                item.put("sizeBytes", child.length())
+                                item.put("modifiedAt", child.lastModified())
+                                sharedFiles.put(item)
+                                fileCount++
+                            }
+                        }
+                    }
+                }
+
                 val result = JSObject()
                 result.put("installedApps", appArray)
                 result.put("imageCount", images)
                 result.put("videoCount", videos)
                 result.put("mediaReadGranted", mediaReadGranted)
+                result.put("allFilesAccessGranted", allFilesAccessGranted)
+                result.put("sharedFiles", sharedFiles)
                 result.put("usageAccessGranted", usageAllowed)
                 result.put("usageLast7Days", usageArray)
                 result.put("callLogPermissionGranted", callLogAllowed)
