@@ -7,7 +7,7 @@ import { tryNativeCommand, executeAgentAction } from './native-actions';
 import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, removePhraseCorrection } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; scanPersonalDeviceData(): Promise<{ installedApps: Array<{name:string;packageName:string}>; imageCount:number; videoCount:number; usageAccessGranted:boolean; usageLast7Days:Array<{packageName:string;appName:string;foregroundMs7Days:number}>; callLogPermissionGranted:boolean; recentCalls:Array<{type:number;date:number;durationSeconds:number}>; scannedAt:number }>; openUsageAccessSettings(): Promise<void>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -389,14 +389,11 @@ function renderSettings(view: HTMLElement) {
       <button class="danger wide" id="deleteKeys">OpenRouter API Key ဖျက်မယ်</button>
     </div>
     <div class="card" id="personalMemoryCard">
-      <div class="card-title">🧠 Personal Life Scanner · ကိုယ်ပိုင် Memory</div>
-      <p class="muted">ဖုန်းထဲက ခွင့်ပြုထားသော/ကိုယ်တိုင်ရွေးပေးသော အချက်အလက်များကို စုစည်းပြီး Myk အတွက် Memory ဖိုင် ထုတ်ပေးပါမယ်။ ဒီအဆင့်မှာ ဖိုင်တွေကို server သို့ အလိုအလျောက် မပို့ပါ။</p>
-      <label for="memoryImportFiles">YouTube / TikTok / Gemini / ChatGPT မှ Export လုပ်ထားသော ဖိုင်များ၊ စာသား၊ ဓာတ်ပုံ/ဗီဒီယိုများ ရွေးရန်</label>
-      <input id="memoryImportFiles" type="file" multiple accept=".json,.txt,.html,.htm,.csv,.md,.xml,.zip,image/*,video/*">
-      <small>Export ဖိုင်များ သို့မဟုတ် ကိုယ်တိုင်ရွေးထားသော media ဖိုင်များကိုသာ ဖတ်ပါမည်။ အခြား App များ၏ private history ကို ခွင့်ပြုချက်မရှိဘဲ မဖတ်နိုင်ပါ။</small>
-      <div style="height:10px"></div>
-      <button class="primary wide" id="scanPersonalMemory">ခွင့်ပြုထားသော Data စစ်ပြီး Memory ဖန်တီးမယ်</button>
-      <p id="memoryScanStatus" class="muted" aria-live="polite">မစတင်ရသေးပါ။ Scan မလုပ်မီ သင်ရွေးထားသောဖိုင်များကို စစ်ဆေးပါ။</p>
+      <div class="card-title">🧠 Personal Life Scanner · အလိုအလျောက်စစ်ဆေးခြင်း</div>
+      <p class="muted">ခလုတ်တစ်ချက်နှိပ်ပြီး ဖုန်းထဲက ဖတ်ခွင့်ရှိသော App စာရင်း၊ ဓာတ်ပုံ/ဗီဒီယို အရေအတွက်၊ အသုံးပြုချိန်စာရင်း (Usage Access ခွင့်ပြုထားလျှင်)၊ Myk data နှင့် ခွင့်ပြုထားသော recent notifications ကို စစ်ဆေးပါမယ်။ ဖိုင်ရွေးထည့်ရန် မလိုပါ။</p>
+      <button class="primary wide" id="scanPersonalMemory">📡 ဖုန်းကို အလိုအလျောက် Scan လုပ်ပြီး Memory ဖန်တီးရန်</button>
+      <button class="secondary wide" id="enableUsageAccess">App အသုံးပြုချိန်မှတ်တမ်း ခွင့်ပြုရန်</button>
+      <p id="memoryScanStatus" class="muted" aria-live="polite">Scan မစတင်ရသေးပါ။ အချက်အလက်များကို ဖုန်းပေါ်တွင် စုစည်းပြီး Preview ပြပေးပါမယ်။</p>
       <div id="memoryPreview" class="muted"></div>
       <button class="secondary wide" id="downloadMemoryJson" disabled>Memory JSON ဖိုင် သိမ်းရန်</button>
       <button class="secondary wide" id="downloadMemoryMarkdown" disabled>Memory Markdown ဖိုင် သိမ်းရန်</button>
@@ -568,134 +565,102 @@ function renderSettings(view: HTMLElement) {
     } catch (err) { voiceResult.textContent = err instanceof Error ? err.message : 'စကားကို မသိမ်းနိုင်ပါ။'; }
   });
 
-  // Personal Life Scanner: only processes user-selected files and explicitly granted app data.
+  // Personal Life Scanner: automatic native scan, no file picker.
   let memoryDraft: Record<string, unknown> | null = null;
   let memoryMarkdown = '';
-  const scanFiles = view.querySelector<HTMLInputElement>('#memoryImportFiles')!;
   const scanStatus = view.querySelector<HTMLElement>('#memoryScanStatus')!;
   const memoryPreview = view.querySelector<HTMLElement>('#memoryPreview')!;
   const jsonDownload = view.querySelector<HTMLButtonElement>('#downloadMemoryJson')!;
   const mdDownload = view.querySelector<HTMLButtonElement>('#downloadMemoryMarkdown')!;
-  const downloadText = (name: string, text: string, type: string) => {
-    const url = URL.createObjectURL(new Blob([text], { type }));
-    const a = document.createElement('a');
-    a.href = url; a.download = name; a.click();
+  const downloadText = (name: string, content: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1500);
   };
-  const safeText = (s: string) => s.replace(/\s+/g, ' ').trim();
+  view.querySelector<HTMLButtonElement>('#enableUsageAccess')!.addEventListener('click', async () => {
+    try { await MykNative.openUsageAccessSettings(); scanStatus.textContent = 'Android Settings ထဲမှာ Myk Guardian AI ကို Usage Access ခွင့်ပြုပြီး ဒီ App ကို ပြန်ဖွင့်ကာ Scan ခလုတ်ကို ထပ်နှိပ်ပါ။'; }
+    catch (err) { scanStatus.textContent = 'Usage Access Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+  });
   view.querySelector<HTMLButtonElement>('#scanPersonalMemory')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#scanPersonalMemory')!;
-    button.disabled = true;
-    scanStatus.textContent = 'ရွေးထားသောဖိုင်များနှင့် Myk ထဲရှိ ခွင့်ပြုထားသော data ကို စစ်ဆေးနေသည်…';
+    button.disabled = true; scanStatus.textContent = 'Android က ဖတ်ခွင့်ပေးထားသော ဖုန်း Data များကို စစ်ဆေးနေသည်…';
     try {
-      const selectedFiles = Array.from(scanFiles.files || []);
-      const imported: Array<{name:string;type:string;size:number;modifiedAt:string;textExcerpt?:string}> = [];
-      const topicCounts: Record<string, number> = {};
-      const textParts: string[] = [];
-      for (const file of selectedFiles) {
-        const item: {name:string;type:string;size:number;modifiedAt:string;textExcerpt?:string} = {
-          name:file.name, type:file.type || 'unknown', size:file.size,
-          modifiedAt: new Date(file.lastModified).toISOString()
-        };
-        if (file.size <= 2_000_000 && (/\.(json|txt|html?|csv|md|xml)$/i.test(file.name) || file.type.startsWith('text/'))) {
-          const raw = await file.text();
-          const excerpt = safeText(raw).slice(0, 12000);
-          item.textExcerpt = excerpt;
-          textParts.push(excerpt);
-        }
-        imported.push(item);
+      const device = await MykNative.scanPersonalDeviceData();
+      if (!device.usageAccessGranted) {
+        scanStatus.textContent = 'App အသုံးပြုချိန်မှတ်တမ်းကို Android က ပိတ်ထားပါတယ်။ “App အသုံးပြုချိန်မှတ်တမ်း ခွင့်ပြုရန်” ကို တစ်ကြိမ်နှိပ်ပြီး Myk ကို Allow လုပ်ပါ၊ ပြီးရင် Scan ထပ်လုပ်ပါ။';
       }
-      // Local preference signals only; never include API keys or secrets.
       const corrections = getPhraseMap();
       const localSignals = {
         voiceCommandCorrections: Object.entries(corrections).map(([heard,intended]) => ({heard,intended})),
-        selectedModel: localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL,
-        savedPermissionFlags: readPerms()
+        selectedModel: localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL
       };
       let notificationItems: Array<{packageName:string;title:string;text:string;postTime:number}> = [];
       try {
         const status = await MykNative.getStatus();
         if (status.notificationEnabled) {
           const recent = await MykNative.getRecentNotifications();
-          notificationItems = (recent.notifications || []).slice(0, 50).map(n => ({
-            packageName:n.packageName, title:n.title, text:n.text, postTime:n.postTime
-          }));
+          notificationItems = (recent.notifications || []).slice(0, 50).map(n => ({packageName:n.packageName,title:n.title,text:n.text,postTime:n.postTime}));
         }
-      } catch { /* Web preview or unavailable native bridge: continue without notifications. */ }
-      const corpus = textParts.join(' ') + ' ' + imported.map(f=>f.name).join(' ') + ' ' +
-        notificationItems.map(n=>n.title + ' ' + n.text).join(' ') + ' ' +
-        Object.values(corrections).join(' ');
-      const patterns = [
-        ['YouTube', /youtube|youtu\.be|ယူကျု/gi],
-        ['TikTok', /tiktok|tik tok|တစ်တော့/gi],
-        ['Gemini', /gemini|ဂျမီနိုင်း/gi],
-        ['ChatGPT', /chatgpt|openai|ချတ်ဂျီပီတီ/gi],
+      } catch { /* Continue if native notification access is unavailable. */ }
+      const corpus = device.installedApps.map(a=>a.name+' '+a.packageName).join(' ') + ' ' +
+        device.usageLast7Days.map(a=>a.appName+' '+a.packageName).join(' ') + ' ' +
+        notificationItems.map(n=>n.title+' '+n.text).join(' ') + ' ' + Object.values(corrections).join(' ');
+      const topicPatterns = [
+        ['YouTube', /youtube|youtu\\.be|ယူကျု/gi], ['TikTok', /tiktok|tik tok|တစ်တော့/gi],
+        ['Gemini', /gemini/gi], ['ChatGPT', /chatgpt|openai/gi],
         ['Games', /game|gaming|ဂိမ်း|pubg|mobile legends|free fire/gi],
         ['Movies and video', /movie|film|series|video|ရုပ်ရှင်|ဗီဒီယို/gi],
-        ['Technology and AI', /ai|android|technology|နည်းပညာ/gi],
-        ['Music', /music|song|သီချင်း/gi]
+        ['Technology and AI', /ai|android|technology|နည်းပညာ/gi], ['Music', /music|song|သီချင်း/gi]
       ] as Array<[string,RegExp]>;
-      for (const [label,re] of patterns) topicCounts[label] = (corpus.match(re) || []).length;
+      const topicCounts: Record<string,number> = {};
+      for (const [topic,re] of topicPatterns) topicCounts[topic] = (corpus.match(re)||[]).length;
       const data = {
-        schemaVersion: 1,
-        generatedAt: new Date().toISOString(),
-        privacy: {
-          processedOnDevice: true,
-          uploadedAutomatically: false,
-          note: 'Only selected files, Myk local preferences, and recent notifications when Notification Access is already enabled are included. This is not a complete phone-wide history.'
+        schemaVersion: 2, generatedAt: new Date().toISOString(),
+        privacy: { processedOnDevice:true, uploadedAutomatically:false,
+          note:'Automatic device scan. Includes app inventory, accessible media counts, usage stats only when Usage Access is granted, call logs only when Android permission is already granted, Myk local corrections, and recent notifications only when enabled.' },
+        deviceOverview: {
+          installedApps: device.installedApps,
+          media: { imageCount:device.imageCount, videoCount:device.videoCount },
+          usageAccessGranted:device.usageAccessGranted,
+          usageLast7Days:device.usageLast7Days,
+          callLogPermissionGranted:device.callLogPermissionGranted,
+          recentCalls:device.recentCalls,
+          scannedAt:new Date(device.scannedAt).toISOString()
         },
-        sources: {
-          selectedFiles: imported.map(({name,type,size,modifiedAt,textExcerpt}) => ({
-            name,type,size,modifiedAt,
-            ...(textExcerpt ? {textExcerpt} : {})
-          })),
-          mykLocalSignals: localSignals,
-          recentNotifications: notificationItems
-        },
-        inferredTopicMentions: topicCounts,
+        mykLocalSignals:localSignals, recentNotifications:notificationItems,
+        inferredTopicMentions:topicCounts,
         profileDraft: {
-          summary: 'ဒီ Memory သည် စုဆောင်းရရှိသော ဖိုင်အမည်များ၊ ရွေးထားသော export စာသားများ၊ Myk voice correction များနှင့် ခွင့်ပြုထားလျှင် recent notifications အပေါ် အခြေခံသည့် အကြမ်းဖျဉ်း draft ဖြစ်သည်။ Topic mention များသည် စိတ်ဝင်စားမှုကို အတည်ပြုခြင်းမဟုတ်ပါ။',
-          topicsToReview: Object.entries(topicCounts).filter(([,count])=>count>0).sort((a,b)=>b[1]-a[1]).map(([topic,mentions])=>({topic,mentions})),
-          userConfirmedFacts: [],
-          askUserToConfirmBeforeRemembering: true
+          summary:'ဤအရာသည် ဖုန်းမှ အလိုအလျောက်စုဆောင်းရရှိသော metadata နှင့် notification စာသားများအပေါ် အခြေခံသည့် draft ဖြစ်သည်။ App ထည့်ထားခြင်းတစ်ခုတည်းဖြင့် သင်နှစ်သက်ကြောင်း အတည်မပြုနိုင်ပါ။',
+          topicsToReview:Object.entries(topicCounts).filter(([,count])=>count>0).sort((a,b)=>b[1]-a[1]).map(([topic,mentions])=>({topic,mentions})),
+          userConfirmedFacts:[], askUserToConfirmBeforeRemembering:true
         }
       };
       memoryDraft = data;
       memoryMarkdown = '# Myk Personal Memory (Draft)\\n\\n' +
-        '- Generated: ' + data.generatedAt + '\n' +
-        '- Imported files: ' + imported.length + '\n' +
-        '- Recent notifications included: ' + notificationItems.length + '\n\\n' +
-        '## Possible topic signals\\n' +
-        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>'- ' + t.topic + ': ' + t.mentions + ' mention(s) — review before treating as a preference').join('\n') : '- No strong topic signals found in the selected data.') +
-        '\n\\n## Voice command corrections\\n' +
-        (localSignals.voiceCommandCorrections.length ? localSignals.voiceCommandCorrections.map(p=>'- Heard: ' + p.heard + ' → Intended: ' + p.intended).join('\n') : '- None saved.') +
-        '\n\\n## Privacy and limitations\\n' +
-        '- Generated locally in the app; not automatically sent to OpenRouter.\\n' +
-        '- Selected image/video files are catalogued by name/type/size only; their visual/audio content is not analysed.\\n' +
-        '- App private databases, full YouTube/TikTok history, full Gemini/ChatGPT conversations, and internet browsing history are not automatically accessible. Import official export files to include their contents.\\n' +
-        '- Review and edit this draft before asking Myk to remember any personal facts.';
-      memoryPreview.innerHTML = '<b>Preview အကျဉ်း</b><div>ရွေးထားသောဖိုင်: ' + imported.length +
-        '</div><div>ဖတ်ယူထားသော notification: ' + notificationItems.length +
-        '</div><div>Topic signal တွေ့ရှိမှု: ' + data.profileDraft.topicsToReview.length +
-        '</div><div style="margin-top:8px">' +
-        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>esc(t.topic)+' ('+t.mentions+')').join(' · ') : 'Topic signal မတွေ့ပါ။ Export ဖိုင်ထည့်ကြည့်ပါ။') +
-        '</div><p>ဤအရာသည် အတည်ပြုထားသော ကိုယ်ရေးအချက်အလက်မဟုတ်ဘဲ ပြန်လည်စစ်ဆေးရန် draft ဖြစ်သည်။</p>';
-      jsonDownload.disabled = false; mdDownload.disabled = false;
-      scanStatus.textContent = 'Memory draft ဖန်တီးပြီးပါပြီ။ အချက်အလက်တွေကို ပြန်စစ်ပြီး သင်ကိုယ်တိုင် ဖိုင်သိမ်းပါ။';
+        '- Generated: ' + data.generatedAt + '\\n' +
+        '- Installed apps: ' + device.installedApps.length + '\\n' +
+        '- Images: ' + device.imageCount + ' · Videos: ' + device.videoCount + '\\n' +
+        '- Usage Access: ' + (device.usageAccessGranted?'enabled':'not enabled') + '\\n' +
+        '- Usage records: ' + device.usageLast7Days.length + ' · Recent calls read: ' + device.recentCalls.length + '\\n' +
+        '- Recent notifications: ' + notificationItems.length + '\\n\\n## Possible topic signals\\n' +
+        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>'- '+t.topic+': '+t.mentions+' mention(s) — review before treating as a preference').join('\\n') : '- No strong topic signals found.') +
+        '\\n\\n## Privacy limitations\\n' +
+        '- This scan does not read private databases or full watch/chat histories from YouTube, TikTok, Gemini, or ChatGPT.\\n' +
+        '- Image/video files are counted, not visually or audio analysed. Internet data usage does not reveal which pages or videos were watched.\\n' +
+        '- Call log details are included only if Android permission is already granted.\\n' +
+        '- Personal data is not automatically sent to OpenRouter. Review this draft before using it as memory.';
+      memoryPreview.innerHTML = '<b>Scan ပြီးပါပြီ</b><div>ထည့်သွင်းထားသော App: '+device.installedApps.length+'</div><div>ဓာတ်ပုံ: '+device.imageCount+' · ဗီဒီယို: '+device.videoCount+'</div><div>Usage Access: '+(device.usageAccessGranted?'ဖွင့်ထားသည်':'မဖွင့်ရသေးပါ')+' · Usage records: '+device.usageLast7Days.length+'</div><div>Call log: '+(device.callLogPermissionGranted?device.recentCalls.length+' ခု ဖတ်ရရှိ':'ခွင့်ပြုချက်မရှိ')+'</div><div>Notification: '+notificationItems.length+' ခု</div><p>အချက်အလက်များသည် draft ဖြစ်ပြီး စိတ်ဝင်စားမှုဟု အလိုအလျောက် အတည်မပြုပါ။</p>';
+      jsonDownload.disabled=false; mdDownload.disabled=false;
+      if (device.usageAccessGranted) scanStatus.textContent='ဖုန်း Data scan ပြီးပါပြီ။ Preview စစ်ပြီး Memory ဖိုင်ကို သိမ်းနိုင်ပါတယ်။';
     } catch (err) {
-      scanStatus.textContent = 'Scan မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
-    } finally { button.disabled = false; }
+      scanStatus.textContent='Auto Scan မအောင်မြင်ပါ: '+(err instanceof Error?err.message:'Native plugin မရရှိပါ။ APK ကို ပြန် build လုပ်ပါ။');
+    } finally { button.disabled=false; }
   });
-  jsonDownload.addEventListener('click', () => {
-    if (memoryDraft) downloadText('myk_personal_memory.json', JSON.stringify(memoryDraft, null, 2), 'application/json;charset=utf-8');
-  });
-  mdDownload.addEventListener('click', () => {
-    if (memoryMarkdown) downloadText('myk_personal_profile.md', memoryMarkdown, 'text/markdown;charset=utf-8');
-  });
-  view.querySelector<HTMLButtonElement>('#clearMemoryDraft')!.addEventListener('click', () => {
-    memoryDraft = null; memoryMarkdown = ''; scanFiles.value = '';
-    memoryPreview.textContent = 'Preview ဖျက်ပြီးပါပြီ။'; scanStatus.textContent = 'ယာယီ Memory draft ကို ရှင်းလိုက်ပါပြီ။';
-    jsonDownload.disabled = true; mdDownload.disabled = true;
+  jsonDownload.addEventListener('click',()=>{if(memoryDraft)downloadText('myk_personal_memory.json',JSON.stringify(memoryDraft,null,2),'application/json;charset=utf-8');});
+  mdDownload.addEventListener('click',()=>{if(memoryMarkdown)downloadText('myk_personal_profile.md',memoryMarkdown,'text/markdown;charset=utf-8');});
+  view.querySelector<HTMLButtonElement>('#clearMemoryDraft')!.addEventListener('click',()=>{
+    memoryDraft=null;memoryMarkdown='';memoryPreview.textContent='Preview ဖျက်ပြီးပါပြီ။';
+    scanStatus.textContent='ယာယီ Memory draft ကို ရှင်းလိုက်ပါပြီ။';jsonDownload.disabled=true;mdDownload.disabled=true;
   });
 }
 
