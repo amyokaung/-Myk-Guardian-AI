@@ -396,7 +396,7 @@ function renderSettings(view: HTMLElement) {
       <button class="secondary wide" id="openMykAppSettings">Myk ရဲ့ Microphone / Location / Photos / Call Log ခွင့်ပြုချက်များဖွင့်ရန်</button>
       <button class="secondary wide" id="enableAccessibilityScanner">အခြား App များနှင့် အပြန်အလှန်လုပ်ဆောင်ခွင့် (Accessibility)</button>
       <button class="secondary wide" id="enableNotificationsScanner">အခြား App များ၏ Notification ဖတ်ခွင့်</button>
-      <p class="muted">မှတ်ချက် — Android က အခြား App တစ်ခု၏ permission ကို Myk က သူ့အစား Allow လုပ်ခွင့်မပေးပါ။ Myk ကိုယ်တိုင်၏ permission ကို App info မှာ Allow လုပ်ရပြီး၊ အခြား App များပေါ်တွင် အလုပ်လုပ်ရန် Accessibility / Notification Access ကို Android Settings မှာ ကိုယ်တိုင်အတည်ပြုရပါမယ်။
+      <p class="muted">မှတ်ချက် — Android က အခြား App တစ်ခု၏ permission ကို Myk က သူ့အစား Allow လုပ်ခွင့်မပေးပါ။ Myk ကိုယ်တိုင်၏ permission ကို App info မှာ Allow လုပ်ရပြီး၊ အခြား App များပေါ်တွင် အလုပ်လုပ်ရန် Accessibility / Notification Access ကို Android Settings မှာ ကိုယ်တိုင်အတည်ပြုရပါမယ်။</p>
       <p id="memoryScanStatus" class="muted" aria-live="polite">Scan မစတင်ရသေးပါ။ အချက်အလက်များကို ဖုန်းပေါ်တွင် စုစည်းပြီး Preview ပြပေးပါမယ်။</p>
       <div id="memoryPreview" class="muted"></div>
       <button class="secondary wide" id="downloadMemoryJson" disabled>Memory JSON ဖိုင် သိမ်းရန်</button>
