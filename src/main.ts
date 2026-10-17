@@ -464,7 +464,7 @@ function renderSettings(view: HTMLElement) {
           prompt: String(m.pricing.prompt ?? '0'), completion: String(m.pricing.completion ?? '0'),
           context: Number(m.context_length || 0)
         }))
-        .sort((x, y) => (Number(x.prompt) + Number(x.completion)) - (Number(y.prompt) + Number(y.completion)));
+        .sort((x: {prompt:string;completion:string}, y: {prompt:string;completion:string}) => (Number(x.prompt) + Number(x.completion)) - (Number(y.prompt) + Number(y.completion)));
       if (!availableModels.length) throw new Error('ဈေးနှုန်းပါသော Model စာရင်း မရရှိပါ။');
       renderModelOptions();
       modelStatus.textContent = `Model ${availableModels.length} ခု ရရှိပါပြီ။ စျေးနှုန်းနဲ့ ကိုက်ညီတာကို ရွေးပါ။`;
