@@ -56,6 +56,98 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     @PluginMethod
+    fun scanPersonalDeviceData(call: PluginCall) {
+        Thread {
+            try {
+                val pm = context.packageManager
+                val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getInstalledApplications(0)
+                }
+                val appArray = JSArray()
+                apps.filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+                    .sortedBy { pm.getApplicationLabel(it).toString().lowercase(Locale.ROOT) }
+                    .forEach { info ->
+                        val item = JSObject()
+                        item.put("name", pm.getApplicationLabel(info).toString())
+                        item.put("packageName", info.packageName)
+                        appArray.put(item)
+                    }
+
+                fun countMedia(uri: Uri, projection: Array<String>): Int {
+                    return try {
+                        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor -> cursor.count } ?: 0
+                    } catch (_: Exception) { 0 }
+                }
+                val images = countMedia(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.Images.Media._ID))
+                val videos = countMedia(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.Video.Media._ID))
+
+                val appOps = context.getSystemService(android.content.Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+                @Suppress("DEPRECATION")
+                val usageMode = appOps.checkOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), context.packageName)
+                val usageAllowed = usageMode == android.app.AppOpsManager.MODE_ALLOWED
+                val usageArray = JSArray()
+                if (usageAllowed) {
+                    val manager = context.getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+                    val end = System.currentTimeMillis()
+                    val start = end - 7L * 24 * 60 * 60 * 1000
+                    manager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, start, end)
+                        .filter { it.totalTimeInForeground > 0 }
+                        .sortedByDescending { it.totalTimeInForeground }
+                        .take(30).forEach { stat ->
+                            val item = JSObject()
+                            item.put("packageName", stat.packageName)
+                            item.put("foregroundMs7Days", stat.totalTimeInForeground)
+                            try { item.put("appName", pm.getApplicationLabel(pm.getApplicationInfo(stat.packageName, 0)).toString()) }
+                            catch (_: Exception) { item.put("appName", stat.packageName) }
+                            usageArray.put(item)
+                        }
+                }
+
+                val callsArray = JSArray()
+                val callLogAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                    context.checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+                if (callLogAllowed) {
+                    try {
+                        context.contentResolver.query(android.provider.CallLog.Calls.CONTENT_URI,
+                            arrayOf(android.provider.CallLog.Calls.TYPE, android.provider.CallLog.Calls.DATE, android.provider.CallLog.Calls.DURATION),
+                            null, null, android.provider.CallLog.Calls.DATE + " DESC")?.use { cursor ->
+                            var n = 0
+                            while (cursor.moveToNext() && n < 30) {
+                                val item = JSObject()
+                                item.put("type", cursor.getInt(0))
+                                item.put("date", cursor.getLong(1))
+                                item.put("durationSeconds", cursor.getLong(2))
+                                callsArray.put(item); n++
+                            }
+                        }
+                    } catch (_: SecurityException) { }
+                }
+
+                val result = JSObject()
+                result.put("installedApps", appArray)
+                result.put("imageCount", images)
+                result.put("videoCount", videos)
+                result.put("usageAccessGranted", usageAllowed)
+                result.put("usageLast7Days", usageArray)
+                result.put("callLogPermissionGranted", callLogAllowed)
+                result.put("recentCalls", callsArray)
+                result.put("scannedAt", System.currentTimeMillis())
+                call.resolve(result)
+            } catch (error: Exception) {
+                call.reject("ဖုန်း Data ကို scan မလုပ်နိုင်ပါ: ${error.message}", error)
+            }
+        }.start()
+    }
+
+    @PluginMethod
+    fun openUsageAccessSettings(call: PluginCall) {
+        openSettings(call, Settings.ACTION_USAGE_ACCESS_SETTINGS)
+    }
+
+    @PluginMethod
     fun openAccessibilitySettings(call: PluginCall) {
         openSettings(call, Settings.ACTION_ACCESSIBILITY_SETTINGS)
     }
