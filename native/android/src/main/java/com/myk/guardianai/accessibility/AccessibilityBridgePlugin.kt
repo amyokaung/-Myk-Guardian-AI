@@ -19,10 +19,24 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 
 // IMPORTANT: This name must match registerPlugin('MykAccessibility') in src/main.ts
 // and src/native-actions.ts.
-@CapacitorPlugin(name = "MykAccessibility")
+@CapacitorPlugin(
+    name = "MykAccessibility",
+    permissions = [
+        Permission(alias = "media", strings = [
+            android.Manifest.permission.READ_MEDIA_IMAGES,
+            android.Manifest.permission.READ_MEDIA_VIDEO,
+            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        ]),
+        Permission(alias = "callLog", strings = [android.Manifest.permission.READ_CALL_LOG]),
+        Permission(alias = "sms", strings = [android.Manifest.permission.READ_SMS])
+    ]
+)
 class AccessibilityBridgePlugin : Plugin() {
     @PluginMethod
     fun getStatus(call: PluginCall) {
@@ -67,6 +81,48 @@ class AccessibilityBridgePlugin : Plugin() {
             context.checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
         result.put("callLogGranted", callLogGranted)
         call.resolve(result)
+    }
+
+    @PluginMethod
+    fun requestPersonalPermissions(call: PluginCall) {
+        requestPermissionForAliases(arrayOf("media", "callLog", "sms"), call, "personalPermissionsCallback")
+    }
+
+    @PermissionCallback
+    private fun personalPermissionsCallback(call: PluginCall) {
+        val result = JSObject()
+        fun granted(permission: String): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        val mediaGranted = if (Build.VERSION.SDK_INT >= 34) {
+            granted(android.Manifest.permission.READ_MEDIA_IMAGES) ||
+                granted(android.Manifest.permission.READ_MEDIA_VIDEO) ||
+                granted("android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
+        } else if (Build.VERSION.SDK_INT >= 33) {
+            granted(android.Manifest.permission.READ_MEDIA_IMAGES) ||
+                granted(android.Manifest.permission.READ_MEDIA_VIDEO)
+        } else granted(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        result.put("mediaGranted", mediaGranted)
+        result.put("callLogGranted", granted(android.Manifest.permission.READ_CALL_LOG))
+        result.put("smsGranted", granted(android.Manifest.permission.READ_SMS))
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun openAllFilesAccessSettings(call: PluginCall) {
+        try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + context.packageName))
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null))
+            }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: Exception) {
+            call.reject("ဖိုင်ခွင့်ပြုချက် Settings မဖွင့်နိုင်ပါ: " + error.message, error)
+        }
     }
 
     @PluginMethod
@@ -146,6 +202,30 @@ class AccessibilityBridgePlugin : Plugin() {
                     } catch (_: SecurityException) { }
                 }
 
+                val smsArray = JSArray()
+                val smsAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                    context.checkSelfPermission(android.Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                if (smsAllowed) {
+                    try {
+                        context.contentResolver.query(
+                            Uri.parse("content://sms/inbox"),
+                            arrayOf("_id", "address", "body", "date", "type"),
+                            null, null, "date DESC"
+                        )?.use { cursor ->
+                            var n = 0
+                            while (cursor.moveToNext() && n < 50) {
+                                val item = JSObject()
+                                item.put("address", cursor.getString(1).orEmpty())
+                                item.put("body", cursor.getString(2).orEmpty().take(2000))
+                                item.put("date", cursor.getLong(3))
+                                item.put("type", cursor.getInt(4))
+                                smsArray.put(item)
+                                n++
+                            }
+                        }
+                    } catch (_: SecurityException) { }
+                }
+
                 val result = JSObject()
                 result.put("installedApps", appArray)
                 result.put("imageCount", images)
@@ -155,6 +235,8 @@ class AccessibilityBridgePlugin : Plugin() {
                 result.put("usageLast7Days", usageArray)
                 result.put("callLogPermissionGranted", callLogAllowed)
                 result.put("recentCalls", callsArray)
+                result.put("smsPermissionGranted", smsAllowed)
+                result.put("recentSms", smsArray)
                 result.put("scannedAt", System.currentTimeMillis())
                 call.resolve(result)
             } catch (error: Exception) {
