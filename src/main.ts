@@ -388,6 +388,20 @@ function renderSettings(view: HTMLElement) {
       <button class="primary wide" id="saveSettings">Settings သိမ်းမယ်</button>
       <button class="danger wide" id="deleteKeys">OpenRouter API Key ဖျက်မယ်</button>
     </div>
+    <div class="card" id="personalMemoryCard">
+      <div class="card-title">🧠 Personal Life Scanner · ကိုယ်ပိုင် Memory</div>
+      <p class="muted">ဖုန်းထဲက ခွင့်ပြုထားသော/ကိုယ်တိုင်ရွေးပေးသော အချက်အလက်များကို စုစည်းပြီး Myk အတွက် Memory ဖိုင် ထုတ်ပေးပါမယ်။ ဒီအဆင့်မှာ ဖိုင်တွေကို server သို့ အလိုအလျောက် မပို့ပါ။</p>
+      <label for="memoryImportFiles">YouTube / TikTok / Gemini / ChatGPT မှ Export လုပ်ထားသော ဖိုင်များ၊ စာသား၊ ဓာတ်ပုံ/ဗီဒီယိုများ ရွေးရန်</label>
+      <input id="memoryImportFiles" type="file" multiple accept=".json,.txt,.html,.htm,.csv,.md,.xml,.zip,image/*,video/*">
+      <small>Export ဖိုင်များ သို့မဟုတ် ကိုယ်တိုင်ရွေးထားသော media ဖိုင်များကိုသာ ဖတ်ပါမည်။ အခြား App များ၏ private history ကို ခွင့်ပြုချက်မရှိဘဲ မဖတ်နိုင်ပါ။</small>
+      <div style="height:10px"></div>
+      <button class="primary wide" id="scanPersonalMemory">ခွင့်ပြုထားသော Data စစ်ပြီး Memory ဖန်တီးမယ်</button>
+      <p id="memoryScanStatus" class="muted" aria-live="polite">မစတင်ရသေးပါ။ Scan မလုပ်မီ သင်ရွေးထားသောဖိုင်များကို စစ်ဆေးပါ။</p>
+      <div id="memoryPreview" class="muted"></div>
+      <button class="secondary wide" id="downloadMemoryJson" disabled>Memory JSON ဖိုင် သိမ်းရန်</button>
+      <button class="secondary wide" id="downloadMemoryMarkdown" disabled>Memory Markdown ဖိုင် သိမ်းရန်</button>
+      <button class="danger wide" id="clearMemoryDraft">ယာယီ Memory Preview ဖျက်ရန်</button>
+    </div>
     <div class="card">
       <div class="card-title">🎙 ဗေဒါရီ Voice Assistant · Wake Word</div>
       <p class="muted">“ဗေဒါရီရေ၊ …” လို့ခေါ်ပြီး နားထောင်နိုင်ရန် Android foreground microphone service ကို ကိုယ်တိုင်ဖွင့်ပါ။ နားထောင်နေစဉ် Notification ပြမည်။</p>
@@ -552,6 +566,136 @@ function renderSettings(view: HTMLElement) {
       voiceResult.textContent = 'စကားပြင်ဆင်မှုကို ဖုန်းထဲမှာ မှတ်သားပြီးပါပြီ။';
       refreshVoiceProfile();
     } catch (err) { voiceResult.textContent = err instanceof Error ? err.message : 'စကားကို မသိမ်းနိုင်ပါ။'; }
+  });
+
+  // Personal Life Scanner: only processes user-selected files and explicitly granted app data.
+  let memoryDraft: Record<string, unknown> | null = null;
+  let memoryMarkdown = '';
+  const scanFiles = view.querySelector<HTMLInputElement>('#memoryImportFiles')!;
+  const scanStatus = view.querySelector<HTMLElement>('#memoryScanStatus')!;
+  const memoryPreview = view.querySelector<HTMLElement>('#memoryPreview')!;
+  const jsonDownload = view.querySelector<HTMLButtonElement>('#downloadMemoryJson')!;
+  const mdDownload = view.querySelector<HTMLButtonElement>('#downloadMemoryMarkdown')!;
+  const downloadText = (name: string, text: string, type: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
+  const safeText = (s: string) => s.replace(/\\s+/g, ' ').trim();
+  view.querySelector<HTMLButtonElement>('#scanPersonalMemory')!.addEventListener('click', async () => {
+    const button = view.querySelector<HTMLButtonElement>('#scanPersonalMemory')!;
+    button.disabled = true;
+    scanStatus.textContent = 'ရွေးထားသောဖိုင်များနှင့် Myk ထဲရှိ ခွင့်ပြုထားသော data ကို စစ်ဆေးနေသည်…';
+    try {
+      const selectedFiles = Array.from(scanFiles.files || []);
+      const imported: Array<{name:string;type:string;size:number;modifiedAt:string;textExcerpt?:string}> = [];
+      const topicCounts: Record<string, number> = {};
+      const textParts: string[] = [];
+      for (const file of selectedFiles) {
+        const item: {name:string;type:string;size:number;modifiedAt:string;textExcerpt?:string} = {
+          name:file.name, type:file.type || 'unknown', size:file.size,
+          modifiedAt: new Date(file.lastModified).toISOString()
+        };
+        if (file.size <= 2_000_000 && (/\\.(json|txt|html?|csv|md|xml)$/i.test(file.name) || file.type.startsWith('text/'))) {
+          const raw = await file.text();
+          const excerpt = safeText(raw).slice(0, 12000);
+          item.textExcerpt = excerpt;
+          textParts.push(excerpt);
+        }
+        imported.push(item);
+      }
+      // Local preference signals only; never include API keys or secrets.
+      const corrections = getPhraseMap();
+      const localSignals = {
+        voiceCommandCorrections: Object.entries(corrections).map(([heard,intended]) => ({heard,intended})),
+        selectedModel: localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL,
+        savedPermissionFlags: readPerms()
+      };
+      let notificationItems: Array<{packageName:string;title:string;text:string;postTime:number}> = [];
+      try {
+        const status = await MykNative.getStatus();
+        if (status.notificationEnabled) {
+          const recent = await MykNative.getRecentNotifications();
+          notificationItems = (recent.notifications || []).slice(0, 50).map(n => ({
+            packageName:n.packageName, title:n.title, text:n.text, postTime:n.postTime
+          }));
+        }
+      } catch { /* Web preview or unavailable native bridge: continue without notifications. */ }
+      const corpus = textParts.join(' ') + ' ' + imported.map(f=>f.name).join(' ') + ' ' +
+        notificationItems.map(n=>n.title + ' ' + n.text).join(' ') + ' ' +
+        Object.values(corrections).join(' ');
+      const patterns = [
+        ['YouTube', /youtube|youtu\\.be|ယူကျု/gi],
+        ['TikTok', /tiktok|tik tok|တစ်တော့/gi],
+        ['Gemini', /gemini|ဂျမီနိုင်း/gi],
+        ['ChatGPT', /chatgpt|openai|ချတ်ဂျီပီတီ/gi],
+        ['Games', /game|gaming|ဂိမ်း|pubg|mobile legends|free fire/gi],
+        ['Movies and video', /movie|film|series|video|ရုပ်ရှင်|ဗီဒီယို/gi],
+        ['Technology and AI', /ai|android|technology|နည်းပညာ/gi],
+        ['Music', /music|song|သီချင်း/gi]
+      ] as Array<[string,RegExp]>;
+      for (const [label,re] of patterns) topicCounts[label] = (corpus.match(re) || []).length;
+      const data = {
+        schemaVersion: 1,
+        generatedAt: new Date().toISOString(),
+        privacy: {
+          processedOnDevice: true,
+          uploadedAutomatically: false,
+          note: 'Only selected files, Myk local preferences, and recent notifications when Notification Access is already enabled are included. This is not a complete phone-wide history.'
+        },
+        sources: {
+          selectedFiles: imported.map(({name,type,size,modifiedAt,textExcerpt}) => ({
+            name,type,size,modifiedAt,
+            ...(textExcerpt ? {textExcerpt} : {})
+          })),
+          mykLocalSignals: localSignals,
+          recentNotifications: notificationItems
+        },
+        inferredTopicMentions: topicCounts,
+        profileDraft: {
+          summary: 'ဒီ Memory သည် စုဆောင်းရရှိသော ဖိုင်အမည်များ၊ ရွေးထားသော export စာသားများ၊ Myk voice correction များနှင့် ခွင့်ပြုထားလျှင် recent notifications အပေါ် အခြေခံသည့် အကြမ်းဖျဉ်း draft ဖြစ်သည်။ Topic mention များသည် စိတ်ဝင်စားမှုကို အတည်ပြုခြင်းမဟုတ်ပါ။',
+          topicsToReview: Object.entries(topicCounts).filter(([,count])=>count>0).sort((a,b)=>b[1]-a[1]).map(([topic,mentions])=>({topic,mentions})),
+          userConfirmedFacts: [],
+          askUserToConfirmBeforeRemembering: true
+        }
+      };
+      memoryDraft = data;
+      memoryMarkdown = '# Myk Personal Memory (Draft)\\n\\n' +
+        '- Generated: ' + data.generatedAt + '\\n' +
+        '- Imported files: ' + imported.length + '\\n' +
+        '- Recent notifications included: ' + notificationItems.length + '\\n\\n' +
+        '## Possible topic signals\\n' +
+        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>'- ' + t.topic + ': ' + t.mentions + ' mention(s) — review before treating as a preference').join('\\n') : '- No strong topic signals found in the selected data.') +
+        '\\n\\n## Voice command corrections\\n' +
+        (localSignals.voiceCommandCorrections.length ? localSignals.voiceCommandCorrections.map(p=>'- Heard: ' + p.heard + ' → Intended: ' + p.intended).join('\\n') : '- None saved.') +
+        '\\n\\n## Privacy and limitations\\n' +
+        '- Generated locally in the app; not automatically sent to OpenRouter.\\n' +
+        '- Selected image/video files are catalogued by name/type/size only; their visual/audio content is not analysed.\\n' +
+        '- App private databases, full YouTube/TikTok history, full Gemini/ChatGPT conversations, and internet browsing history are not automatically accessible. Import official export files to include their contents.\\n' +
+        '- Review and edit this draft before asking Myk to remember any personal facts.';
+      memoryPreview.innerHTML = '<b>Preview အကျဉ်း</b><div>ရွေးထားသောဖိုင်: ' + imported.length +
+        '</div><div>ဖတ်ယူထားသော notification: ' + notificationItems.length +
+        '</div><div>Topic signal တွေ့ရှိမှု: ' + data.profileDraft.topicsToReview.length +
+        '</div><div style="margin-top:8px">' +
+        (data.profileDraft.topicsToReview.length ? data.profileDraft.topicsToReview.map(t=>esc(t.topic)+' ('+t.mentions+')').join(' · ') : 'Topic signal မတွေ့ပါ။ Export ဖိုင်ထည့်ကြည့်ပါ။') +
+        '</div><p>ဤအရာသည် အတည်ပြုထားသော ကိုယ်ရေးအချက်အလက်မဟုတ်ဘဲ ပြန်လည်စစ်ဆေးရန် draft ဖြစ်သည်။</p>';
+      jsonDownload.disabled = false; mdDownload.disabled = false;
+      scanStatus.textContent = 'Memory draft ဖန်တီးပြီးပါပြီ။ အချက်အလက်တွေကို ပြန်စစ်ပြီး သင်ကိုယ်တိုင် ဖိုင်သိမ်းပါ။';
+    } catch (err) {
+      scanStatus.textContent = 'Scan မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    } finally { button.disabled = false; }
+  });
+  jsonDownload.addEventListener('click', () => {
+    if (memoryDraft) downloadText('myk_personal_memory.json', JSON.stringify(memoryDraft, null, 2), 'application/json;charset=utf-8');
+  });
+  mdDownload.addEventListener('click', () => {
+    if (memoryMarkdown) downloadText('myk_personal_profile.md', memoryMarkdown, 'text/markdown;charset=utf-8');
+  });
+  view.querySelector<HTMLButtonElement>('#clearMemoryDraft')!.addEventListener('click', () => {
+    memoryDraft = null; memoryMarkdown = ''; scanFiles.value = '';
+    memoryPreview.textContent = 'Preview ဖျက်ပြီးပါပြီ။'; scanStatus.textContent = 'ယာယီ Memory draft ကို ရှင်းလိုက်ပါပြီ။';
+    jsonDownload.disabled = true; mdDownload.disabled = true;
   });
 }
 
