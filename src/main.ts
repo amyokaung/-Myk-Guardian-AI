@@ -394,7 +394,9 @@ function renderSettings(view: HTMLElement) {
       <button class="primary wide" id="scanPersonalMemory">📡 ဖုန်းကို အလိုအလျောက် Scan လုပ်ပြီး Memory ဖန်တီးရန်</button>
       <button class="secondary wide" id="enableUsageAccess">App အသုံးပြုချိန်မှတ်တမ်း ခွင့်ပြုရန်</button>
       <button class="secondary wide" id="openMykAppSettings">Myk ရဲ့ Microphone / Location / Photos / Call Log ခွင့်ပြုချက်များဖွင့်ရန်</button>
-      <p class="muted">မှတ်ချက် — ဒီခလုတ်က Myk ကိုယ်တိုင်ရဲ့ ခွင့်ပြုချက်စာမျက်နှာကို ဖွင့်ပေးတာပါ။ အခြား App တွေရဲ့ ခွင့်ပြုချက်ကို Myk က အလိုအလျောက် ပြောင်းပေးလို့မရပါ။ Accessibility နဲ့ Notification Access ကိုလည်း Android က သီးခြားအတည်ပြုရပါမယ်။</p>
+      <button class="secondary wide" id="enableAccessibilityScanner">အခြား App များနှင့် အပြန်အလှန်လုပ်ဆောင်ခွင့် (Accessibility)</button>
+      <button class="secondary wide" id="enableNotificationsScanner">အခြား App များ၏ Notification ဖတ်ခွင့်</button>
+      <p class="muted">မှတ်ချက် — Android က အခြား App တစ်ခု၏ permission ကို Myk က သူ့အစား Allow လုပ်ခွင့်မပေးပါ။ Myk ကိုယ်တိုင်၏ permission ကို App info မှာ Allow လုပ်ရပြီး၊ အခြား App များပေါ်တွင် အလုပ်လုပ်ရန် Accessibility / Notification Access ကို Android Settings မှာ ကိုယ်တိုင်အတည်ပြုရပါမယ်။
       <p id="memoryScanStatus" class="muted" aria-live="polite">Scan မစတင်ရသေးပါ။ အချက်အလက်များကို ဖုန်းပေါ်တွင် စုစည်းပြီး Preview ပြပေးပါမယ်။</p>
       <div id="memoryPreview" class="muted"></div>
       <button class="secondary wide" id="downloadMemoryJson" disabled>Memory JSON ဖိုင် သိမ်းရန်</button>
@@ -582,6 +584,14 @@ function renderSettings(view: HTMLElement) {
   view.querySelector<HTMLButtonElement>('#openMykAppSettings')!.addEventListener('click', async () => {
     try { await MykNative.openMykAppSettings(); scanStatus.textContent = 'Android App info ဖွင့်ထားပါတယ်။ Permissions ထဲမှာ Myk အတွက် လိုအပ်တာတွေကို Allow လုပ်ပြီး ပြန်လာကာ Scan ထပ်လုပ်ပါ။'; }
     catch (err) { scanStatus.textContent = 'App permission Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+  });
+  view.querySelector<HTMLButtonElement>('#enableAccessibilityScanner')!.addEventListener('click', async () => {
+    try { await MykNative.openAccessibilitySettings(); scanStatus.textContent = 'Accessibility Settings ထဲမှာ Myk Guardian AI ကို On လုပ်ပြီး Android ရဲ့ confirmation ကို အတည်ပြုပါ။'; }
+    catch (err) { scanStatus.textContent = 'Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
+  });
+  view.querySelector<HTMLButtonElement>('#enableNotificationsScanner')!.addEventListener('click', async () => {
+    try { await MykNative.openNotificationSettings(); scanStatus.textContent = 'Notification Access စာရင်းထဲမှာ Myk Guardian AI ကို Allow လုပ်ပြီး ပြန်လာပါ။'; }
+    catch (err) { scanStatus.textContent = 'Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
   });
   view.querySelector<HTMLButtonElement>('#enableUsageAccess')!.addEventListener('click', async () => {
     try { await MykNative.openUsageAccessSettings(); scanStatus.textContent = 'Android Settings ထဲမှာ Myk Guardian AI ကို Usage Access ခွင့်ပြုပြီး ဒီ App ကို ပြန်ဖွင့်ကာ Scan ခလုတ်ကို ထပ်နှိပ်ပါ။'; }
