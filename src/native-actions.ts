@@ -188,6 +188,13 @@ function placeQueryFromCommand(command: string): string {
 export async function tryNativeCommand(command: string): Promise<string | null> {
   const text = toAsciiDigits(normalizeBurmeseCommand(command)).replace(/^ဗေဒါရီ(?:ရေ|လေး)?[၊,\s]*/, '').trim();
 
+  // Route the current utterance by explicit intent before consulting the LLM.
+  // This must not inherit a previous YouTube/music topic from conversation history.
+  const asksCurrentLocation =
+    /(?:^(?:(?:ငါ|ကျွန်တော်|ကျွန်မ|ကျွန်ုပ်)\\s*)?(?:(?:အခု|ယခု|လက်ရှိ)\\s*)?(?:ဘယ်(?:နေရာ)?(?:မှာ)?\\s*(?:ရောက်|ရှိ|နေလဲ)|ဘယ်ရောက်(?:နေလဲ|နေတာလဲ|လဲ)?)(?:ပါ)?[။.!?]*$)/i.test(text) ||
+    /(?:where\\s+am\\s+i(?:\\s+now)?|my\\s+current\\s+location|show\\s+my\\s+location|လက်ရှိတည်နေရာ|တည်နေရာကို\\s*(?:ပြော|ပြ)|ငါ့?\\s*တည်နေရာ)/i.test(text);
+  if (asksCurrentLocation) return currentLocationAnswer();
+
   // Give a clearly named app priority over general AI intent classification.
   // Keep song-search requests available to the existing music flow.
   const openVerb = /(ဖွင့်|ဖွင့်|ဖွင့္|open|launch)/i.test(text);
