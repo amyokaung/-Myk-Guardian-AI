@@ -4,9 +4,10 @@ import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
+import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, removePhraseCorrection } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -89,8 +90,8 @@ function renderChat(view: HTMLElement) {
       const result = await SpeechRecognition.start({ language: 'my-MM', maxResults: 1, prompt: 'မြန်မာလို ပြောပါ', partialResults: false, popup: true });
       const transcript = result.matches?.[0]?.trim();
       if (transcript) {
-        input.value = transcript;
-        // Voice commands should be executed, not merely transcribed into the input box.
+        input.value = applyLearnedPhrase(transcript);
+        // Apply owner-specific phrase corrections before dispatching the voice command.
         const form = view.querySelector<HTMLFormElement>('#chatForm');
         if (form && !busy) form.requestSubmit();
       } else alert('အသံကို မရှင်းလင်းစွာ မဖမ်းယူနိုင်သေးပါနော်။ မြန်မာလို ထပ်ပြောပေးပါ။');
@@ -125,7 +126,7 @@ const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', descripti
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
   const history = messages.slice(-20);
-  const systemPrompt = 'You are Myk Guardian AI — a sweet, bright, caring Burmese-speaking companion with a cute, lively personality, like a clever close friend who pays attention. Reply in natural everyday Myanmar Burmese, not literal translated Burmese. Sound warm and affectionate: use gentle conversational endings such as “နော်”, “လေး”, “ပါနော်” naturally; be a little playful and witty when the moment fits, and show real empathy when the user is frustrated. Use fitting emojis sparingly (for example 🌷😊✨💛), never in every sentence. Avoid stiff, robotic, formal, repetitive, or generic customer-service wording. Do not call the user by an assumed gender or use over-familiar pet names. Vary phrasing and remember context. When giving a direct result such as weather or a calendar answer, preserve the useful facts and add only a short, sweet Burmese comment; do not rewrite it into a long generic answer. If the user is upset, acknowledge it kindly and fix the problem instead of joking. Never invent facts or claim an action succeeded unless the app confirms it. WEATHER RULE: If asked about weather, temperature, rain, or forecast, call phone_action action=get_weather. If a city is named, pass it in query; otherwise omit query so the app uses live GPS. Never invent weather details. Explain current conditions and today and tomorrow temperature and rain chance in friendly Burmese. DATE RULE: For today, tomorrow, the day after tomorrow, or yesterday weekday/date questions, use the phone local calendar; if needed call no tool and calculate from the device date correctly. Never guess a weekday from memory or the model. LOCATION RULE: If asked where the user is, call phone_action action=get_location and use the live GPS result; never guess location from general knowledge. For a named destination or nearby service, call phone_action action=search_places with the destination/category. ALARM RULE: For requests such as “မနက် ၁၀ နာရီ နိုးပါ” or “alarm ကို ၁၀ နာရီထားပေး”, call phone_action action=set_alarm with hour in 24-hour format, minute, and a label. NOTES RULE: If the user only says “Notes” or asks to open Notes, call phone_action action=open_app with app exactly “Notes”; use write_note only when they ask to write/create a note and provide content. MUSIC RULE: If the user asks to play/find/listen to a song and title or singer is missing, ask briefly for it. When supplied, call phone_action action=search_youtube with query containing title and singer. The native action will open YouTube search results and attempt to select a video; if selection fails, say the results are open and ask the user to select one. For a request to write a note, call phone_action action=write_note with the complete note text, not just open_app. PHONE RULE: For a request to open the calling screen, call phone_action action=open_phone. For a request to call a phone number, use action=call_phone with the number; it only opens the dialer with that number prefilled and the user must tap Call. If the user gives only a contact name and no number, open the dialer and ask them to select the contact. Never place calls automatically. For a request to write into an already open text field, use set_text. If the user requests another phone action matching an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
+  const systemPrompt = `You are Myk Guardian AI — a sweet, bright, caring Burmese-speaking companion with a cute, lively personality, like a clever close friend who pays attention. Reply in natural everyday Myanmar Burmese, not literal translated Burmese. INTENT ISOLATION RULE: Classify every new user utterance independently by what the user just asked. Do not let the previously open app, a previous song request, or conversation history change the meaning of a clear new request. If the user asks “ငါဘယ်ရောက်နေလဲ”, “ဘယ်ရောက်နေလဲ”, “လက်ရှိတည်နေရာ”, or “where am I”, call phone_action action=get_location immediately even while YouTube is playing; never ask for a song title. Only use media_next/media_previous/media_play_pause when the current utterance explicitly requests a music/media control. LOCATION AND MUSIC ARE SEPARATE INTENTS. BURMESE SPEECH UNDERSTANDING RULE: Understand everyday colloquial Myanmar speech, casual phrasing, polite endings, shortened words, common speech-to-text spelling variants, and Burmese-English code-switching. Interpret the user's intended meaning rather than matching only one exact phrase. For example, “ယူကျု နောက်တစ်ပုဒ်သွား”, “သီချင်းကျော်ပေး”, “ဒီပုဒ်ကျော်”, “နောက်သီချင်းဖွင့်” can all mean media_next; “ခဏရပ်”, “သီချင်းရပ်ထား” can mean media_play_pause; “အသံတိုး/အသံတင်/ပိုကျယ်အောင်” can mean volume_up; “အသံချ/အသံလျှော့ပေး” can mean volume_down; “ပင်မကိုသွား/အိမ်မျက်နှာပြင်” can mean home; and “ပြန်သွား/နောက်သို့ပြန်” can mean back. Recognize informal variants such as “ဖွင့်ပေးပါနော်”, “ဖွင့်ပေးဦး”, “ကျော်ပေးနော်”, “ယူကျူး”, and English app names spoken with Burmese pronunciation. When the intended phone action is clear, call the matching phone_action tool instead of merely translating or repeating the request. If the intent or target is genuinely ambiguous, ask one short clarification. Never claim an action succeeded unless its tool result confirms it. Sound warm and affectionate: use gentle conversational endings such as “နော်”, “လေး”, “ပါနော်” naturally; be a little playful and witty when the moment fits, and show real empathy when the user is frustrated. Use fitting emojis sparingly (for example 🌷😊✨💛), never in every sentence. Avoid stiff, robotic, formal, repetitive, or generic customer-service wording. Do not call the user by an assumed gender or use over-familiar pet names. Vary phrasing and remember context. When giving a direct result such as weather or a calendar answer, preserve the useful facts and add only a short, sweet Burmese comment; do not rewrite it into a long generic answer. If the user is upset, acknowledge it kindly and fix the problem instead of joking. Never invent facts or claim an action succeeded unless the app confirms it. WEATHER RULE: If asked about weather, temperature, rain, or forecast, call phone_action action=get_weather. If a city is named, pass it in query; otherwise omit query so the app uses live GPS. Never invent weather details. Explain current conditions and today and tomorrow temperature and rain chance in friendly Burmese. DATE RULE: For today, tomorrow, the day after tomorrow, or yesterday weekday/date questions, use the phone local calendar; if needed call no tool and calculate from the device date correctly. Never guess a weekday from memory or the model. LOCATION RULE: If asked where the user is, call phone_action action=get_location and use the live GPS result; never guess location from general knowledge. For a named destination or nearby service, call phone_action action=search_places with the destination/category. ALARM RULE: For requests such as “မနက် ၁၀ နာရီ နိုးပါ” or “alarm ကို ၁၀ နာရီထားပေး”, call phone_action action=set_alarm with hour in 24-hour format, minute, and a label. NOTES RULE: If the user only says “Notes” or asks to open Notes, call phone_action action=open_app with app exactly “Notes”; use write_note only when they ask to write/create a note and provide content. MUSIC RULE: If the user asks to play/find/listen to a song and title or singer is missing, ask briefly for it. When supplied, call phone_action action=search_youtube with query containing title and singer. The native action will open YouTube search results and attempt to select a video; if selection fails, say the results are open and ask the user to select one. For a request to write a note, call phone_action action=write_note with the complete note text, not just open_app. PHONE RULE: For a request to open the calling screen, call phone_action action=open_phone. For a request to call a phone number, use action=call_phone with the number; it only opens the dialer with that number prefilled and the user must tap Call. If the user gives only a contact name and no number, open the dialer and ask them to select the contact. Never place calls automatically. For a request to write into an already open text field, use set_text. If the user requests another phone action matching an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.`;
   try {
     let answer = '';
     if (provider === 'gemini') {
@@ -417,8 +418,85 @@ function renderSettings(view: HTMLElement) {
       <button class="secondary wide" id="showGeminiKey">Gemini Key ပြ/ဖျောက်</button>
       <button class="danger wide" id="deleteKeys">API Key နှစ်ခုလုံး ဖျက်မယ်</button>
     </div>
+    <div class="card">
+      <div class="card-title">🎙 ဗေဒါရီ Voice Assistant · Wake Word</div>
+      <p class="muted">“ဗေဒါရီရေ၊ …” လို့ခေါ်ပြီး ဖုန်းမျက်နှာပြင်ပိတ်နေချိန်မှာပါ နားထောင်နိုင်ရန် Android foreground microphone service ကို ကိုယ်တိုင်ဖွင့်ပါ။ နားထောင်နေစဉ် Notification အမြဲပြမည်။ Stop လုပ်ရန် ဒီနေရာ သို့မဟုတ် Notification ကို အသုံးပြုပါ။</p>
+      <p class="muted"><b>သိထားရန်:</b> ဒီအဆင့်က Wake Word ကိုသာ ရှာဖွေသည်။ Voice ID မလိုဘဲ မြန်မာစကားနဲ့ ညွှန်ကြားချက်တွေကို နားလည်ဖို့ အဓိကထားထားပါတယ်။ Android/Google Speech Recognition ရရှိနိုင်မှု၊ အင်တာနက်နှင့် ဖုန်းထုတ်လုပ်သူ၏ background ကန့်သတ်ချက်များအပေါ် မူတည်သည်။ Lock PIN/လက်ဗွေကို ကျော်မဖြေပါ။</p>
+      <div class="status-row"><div><b>Wake Word နားထောင်မှု</b><small id="vedariWakeStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><span class="state" id="vedariWakeState">CHECKING</span></div>
+      <button class="primary wide" id="startVedariWake">ဗေဒါရီ နားထောင်မှု စတင်ရန်</button>
+      <button class="secondary wide" id="stopVedariWake">နားထောင်မှု ရပ်ရန်</button>
+    </div>
+    <div class="card">
+      <div class="card-title">🧠 မြန်မာစကားနားလည်မှုနှင့် စကားသင်ယူခြင်း</div>
+      <p class="muted">Voice ID မလိုပါ။ ဗေဒါရီက မြန်မာစကားပြောပုံ၊ အတိုကောက်၊ အဓိပ္ပာယ်တူ စကားလုံးတွေကို ပိုကောင်းကောင်းနားလည်စေရန် အသုံးပြုနိုင်ပါတယ်။ Speech Recognition ကြားမှားတဲ့စကားကို အောက်မှာ မှန်ကန်တဲ့အမိန့်နဲ့ တွဲမှတ်ထားနိုင်ပါတယ်။</p>
+      <label for="heardPhrase">ဗေဒါရီ ကြားမိတဲ့ စကား</label><input id="heardPhrase" placeholder="ဥပမာ - ယူကျု နောက်တစ်ပုဒ်ကျော်ပေး">
+      <label for="correctPhrase">ကိုယ်တကယ်ခိုင်းချင်တဲ့ အမိန့်</label><input id="correctPhrase" placeholder="ဥပမာ - YouTube မှာ နောက်တစ်ပုဒ်ကျော်ပေး">
+      <button class="primary wide" id="savePhrase">ဒီစကားကို မှတ်သားရန်</button>
+      <div id="phraseList" class="muted"></div>
+      <p id="voiceLearningResult" class="muted" aria-live="polite"></p>
+    </div>
     <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
     <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
+  const wakeStatus = view.querySelector<HTMLElement>('#vedariWakeStatus')!;
+  const wakeState = view.querySelector<HTMLElement>('#vedariWakeState')!;
+  const refreshWakeStatus = async () => {
+    try {
+      const status = await MykNative.getPendingWakeCommand();
+      wakeState.textContent = status.listening ? 'LISTENING' : 'STOPPED';
+      wakeState.classList.toggle('enabled', status.listening);
+      wakeStatus.textContent = status.listening ? 'Foreground service အလုပ်လုပ်နေသည်။ Notification ကိုလည်း စစ်ပါ။' : 'နားထောင်မှု ပိတ်ထားသည်။';
+    } catch (err) {
+      wakeState.textContent = 'UNAVAILABLE';
+      wakeState.classList.remove('enabled');
+      wakeStatus.textContent = 'Native service မရပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
+  };
+  view.querySelector<HTMLButtonElement>('#startVedariWake')!.addEventListener('click', async () => {
+    try {
+      const result = await MykNative.startVedariWakeListening();
+      wakeStatus.textContent = result.message || 'Wake Word နားထောင်မှု စတင်လိုက်ပါပြီ။';
+    } catch (err) {
+      wakeStatus.textContent = 'မစတင်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'Microphone permission ကို စစ်ပါ။');
+    }
+    await refreshWakeStatus();
+  });
+  view.querySelector<HTMLButtonElement>('#stopVedariWake')!.addEventListener('click', async () => {
+    try {
+      const result = await MykNative.stopVedariWakeListening();
+      wakeStatus.textContent = result.message || 'နားထောင်မှု ရပ်လိုက်ပါပြီ။';
+    } catch (err) {
+      wakeStatus.textContent = 'မရပ်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error');
+    }
+    await refreshWakeStatus();
+  });
+  void refreshWakeStatus();
+  const voiceResult = view.querySelector<HTMLElement>('#voiceLearningResult')!;
+  const refreshVoiceProfile = () => {
+    const phraseMap = getPhraseMap();
+    const list = view.querySelector<HTMLElement>('#phraseList')!;
+    const entries = Object.entries(phraseMap);
+    list.innerHTML = entries.length ? '<b>မှတ်ထားတဲ့ စကားများ</b>' + entries.map(([heard, intended]) =>
+      '<div style="padding:7px 0;border-bottom:1px solid var(--line)"><div>ကြားမိ: ' + esc(heard) + '</div><div>ပြောင်းရန်: ' + esc(intended) + '</div><button type="button" class="secondary" data-remove-phrase="' + esc(heard) + '">ဖျက်ရန်</button></div>'
+    ).join('') : 'စကားပြင်ဆင်မှု မမှတ်ထားရသေးပါ။';
+    list.querySelectorAll<HTMLButtonElement>('[data-remove-phrase]').forEach(button => button.addEventListener('click', () => {
+      removePhraseCorrection(button.dataset.removePhrase || '');
+      refreshVoiceProfile();
+      voiceResult.textContent = 'မှတ်ထားတဲ့ စကားပြင်ဆင်မှုကို ဖျက်လိုက်ပါပြီ။';
+    }));
+  };
+  refreshVoiceProfile();
+  view.querySelector<HTMLButtonElement>('#savePhrase')!.addEventListener('click', () => {
+    const heard = view.querySelector<HTMLInputElement>('#heardPhrase')!.value;
+    const intended = view.querySelector<HTMLInputElement>('#correctPhrase')!.value;
+    try {
+      savePhraseCorrection(heard, intended);
+      view.querySelector<HTMLInputElement>('#heardPhrase')!.value = '';
+      view.querySelector<HTMLInputElement>('#correctPhrase')!.value = '';
+      voiceResult.textContent = 'စကားပြင်ဆင်မှုကို ဖုန်းထဲမှာ မှတ်သားပြီးပါပြီ။ နောက်တစ်ကြိမ် transcript အတိအကျတူရင် အလိုအလျောက် ပြောင်းပေးမယ်။';
+      refreshVoiceProfile();
+    } catch (err) { voiceResult.textContent = err instanceof Error ? err.message : 'စကားကို မသိမ်းနိုင်ပါ။'; }
+  });
+  refreshVoiceProfile();
   view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
@@ -443,4 +521,33 @@ function renderSettings(view: HTMLElement) {
   });
 }
 
+let consumingWakeCommand = false;
+async function consumeVedariWakeCommand() {
+  if (consumingWakeCommand) return;
+  consumingWakeCommand = true;
+  try {
+    const pending = await MykNative.getPendingWakeCommand();
+    const command = pending.command?.trim();
+    if (command === '__VEDARI_WAKE_ONLY__') {
+      navigateTab('chat');
+      messages.push({ role: 'assistant', content: 'ဟုတ်ကဲ့၊ နားထောင်နေပါတယ်။ ဘာလုပ်ပေးရမလဲနော်?' });
+      render();
+    } else if (command) {
+      navigateTab('chat');
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLTextAreaElement>('#prompt');
+        const form = document.querySelector<HTMLFormElement>('#chatForm');
+        if (input && form && !busy) {
+          input.value = command;
+          form.requestSubmit();
+        }
+      }, 180);
+    }
+  } catch { /* Web-only preview has no native wake service. */ }
+  finally { consumingWakeCommand = false; }
+}
+window.addEventListener('focus', () => { void consumeVedariWakeCommand(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) void consumeVedariWakeCommand(); });
+
 render();
+window.setTimeout(() => { void consumeVedariWakeCommand(); }, 500);
