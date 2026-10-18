@@ -7,7 +7,7 @@ import { tryNativeCommand, executeAgentAction } from './native-actions';
 import { applyLearnedPhrase, savePhraseCorrection, getPhraseMap, removePhraseCorrection } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean; usageAccessGranted?: boolean; mediaReadGranted?: boolean; callLogGranted?: boolean; smsGranted?: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; scanPersonalDeviceData(): Promise<{ installedApps: Array<{name:string;packageName:string}>; imageCount:number; videoCount:number; mediaReadGranted:boolean; allFilesAccessGranted:boolean; sharedFiles:Array<{name:string;path:string;sizeBytes:number;modifiedAt:number}>; usageAccessGranted:boolean; usageLast7Days:Array<{packageName:string;appName:string;foregroundMs7Days:number}>; callLogPermissionGranted:boolean; recentCalls:Array<{type:number;date:number;durationSeconds:number}>; smsPermissionGranted:boolean; recentSms:Array<{address:string;body:string;date:number;type:number}>; scannedAt:number }>; requestPersonalPermissions(): Promise<{mediaGranted:boolean;callLogGranted:boolean;smsGranted:boolean}>; openAllFilesAccessSettings(): Promise<void>; openUsageAccessSettings(): Promise<void>; openMykAppSettings(): Promise<void>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
+type MykNativePlugin = { saveTextFile(options: { fileName: string; content: string; mimeType: string }): Promise<{ success: boolean; fileName: string; uri: string; location: string }>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected: boolean; notificationEnabled: boolean; microphoneGranted: boolean; locationGranted: boolean; usageAccessGranted?: boolean; mediaReadGranted?: boolean; callLogGranted?: boolean; smsGranted?: boolean }>; getRecentNotifications(): Promise<{ notifications: Array<{ packageName: string; title: string; text: string; postTime: number }> }>; scanPersonalDeviceData(): Promise<{ installedApps: Array<{name:string;packageName:string}>; imageCount:number; videoCount:number; mediaReadGranted:boolean; allFilesAccessGranted:boolean; sharedFiles:Array<{name:string;path:string;sizeBytes:number;modifiedAt:number}>; usageAccessGranted:boolean; usageLast7Days:Array<{packageName:string;appName:string;foregroundMs7Days:number}>; callLogPermissionGranted:boolean; recentCalls:Array<{type:number;date:number;durationSeconds:number}>; smsPermissionGranted:boolean; recentSms:Array<{address:string;body:string;date:number;type:number}>; scannedAt:number }>; requestPersonalPermissions(): Promise<{mediaGranted:boolean;callLogGranted:boolean;smsGranted:boolean}>; openAllFilesAccessSettings(): Promise<void>; openUsageAccessSettings(): Promise<void>; openMykAppSettings(): Promise<void>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string }): Promise<{ success: boolean; message?: string }>; startVedariWakeListening(): Promise<{success: boolean; message?: string}>; stopVedariWakeListening(): Promise<{success: boolean; message?: string}>; getPendingWakeCommand(): Promise<{command: string; listening: boolean}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -578,10 +578,13 @@ function renderSettings(view: HTMLElement) {
   const memoryPreview = view.querySelector<HTMLElement>('#memoryPreview')!;
   const jsonDownload = view.querySelector<HTMLButtonElement>('#downloadMemoryJson')!;
   const mdDownload = view.querySelector<HTMLButtonElement>('#downloadMemoryMarkdown')!;
-  const downloadText = (name: string, content: string, type: string) => {
-    const url = URL.createObjectURL(new Blob([content], { type }));
-    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+  const saveTextFile = async (name: string, content: string, type: string) => {
+    try {
+      const result = await MykNative.saveTextFile({ fileName: name, content, mimeType: type });
+      scanStatus.textContent = 'ဖိုင်သိမ်းပြီးပါပြီ — ' + result.location + '။ File Manager > Downloads ထဲမှာ ' + result.fileName + ' ကိုရှာပါ။';
+    } catch (err) {
+      scanStatus.textContent = 'Android Downloads ထဲ သိမ်းမရပါ: ' + (err instanceof Error ? err.message : 'Native save မရပါ။ APK ကို update လုပ်ရန်လိုနိုင်ပါတယ်။');
+    }
   };
   view.querySelector<HTMLButtonElement>('#requestPersonalPermissions')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#requestPersonalPermissions')!;
@@ -698,8 +701,8 @@ function renderSettings(view: HTMLElement) {
       scanStatus.textContent='Auto Scan မအောင်မြင်ပါ: '+(err instanceof Error?err.message:'Native plugin မရရှိပါ။ APK ကို ပြန် build လုပ်ပါ။');
     } finally { button.disabled=false; }
   });
-  jsonDownload.addEventListener('click',()=>{if(memoryDraft)downloadText('myk_personal_memory.json',JSON.stringify(memoryDraft,null,2),'application/json;charset=utf-8');});
-  mdDownload.addEventListener('click',()=>{if(memoryMarkdown)downloadText('myk_personal_profile.md',memoryMarkdown,'text/markdown;charset=utf-8');});
+  jsonDownload.addEventListener('click',()=>{if(memoryDraft)void saveTextFile('myk_personal_memory.json',JSON.stringify(memoryDraft,null,2),'application/json');});
+  mdDownload.addEventListener('click',()=>{if(memoryMarkdown)void saveTextFile('myk_personal_profile.md',memoryMarkdown,'text/markdown');});
   view.querySelector<HTMLButtonElement>('#clearMemoryDraft')!.addEventListener('click',()=>{
     memoryDraft=null;memoryMarkdown='';memoryPreview.textContent='Preview ဖျက်ပြီးပါပြီ။';
     scanStatus.textContent='ယာယီ Memory draft ကို ရှင်းလိုက်ပါပြီ။';jsonDownload.disabled=true;mdDownload.disabled=true;
