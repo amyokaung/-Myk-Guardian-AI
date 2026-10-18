@@ -3,3 +3,41 @@
 
 /* Dedicated Brain screen */
 .brain-records{display:flex;flex-direction:column;gap:10px;margin-top:12px}.brain-record{border:1px solid #ffffff17;border-radius:13px;background:#0c1220;padding:12px}.brain-record-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.brain-record-head b{font-size:12px;line-height:1.7;overflow-wrap:anywhere}.brain-record-head span{font-size:9px;color:#7d8ba6;max-width:38%;overflow-wrap:anywhere;text-align:right}.brain-record p{white-space:pre-wrap;overflow-wrap:anywhere;font-family:'Noto Sans Myanmar',sans-serif;font-size:11px;line-height:1.8;color:#a8b4ca;max-height:260px;overflow:auto}.brain-record-actions{display:flex;gap:8px}.brain-record-actions button{flex:1;padding:9px;font-size:10px}.card input[type=file]{width:100%;font-size:11px;color:#aab7d0;background:#0c1120;border:1px solid #ffffff20;border-radius:10px;padding:10px}.card label{display:block;font-size:12px;font-weight:700;margin:10px 0 6px}.card input[type=text],.card input[type=search],.card textarea{width:100%;resize:vertical;background:#0c1120;border:1px solid #ffffff20;border-radius:13px;color:#edf2ff;padding:12px;outline:none;font:12px 'Noto Sans Myanmar',sans-serif}.card input:focus,.card textarea:focus{border-color:#6ce7f588}.tabs{grid-template-columns:repeat(5,minmax(0,1fr))}@media(max-width:380px){.tabs button{font-size:8px;padding:10px 1px}}
+
+/* Simplified ChatGPT-inspired navigation and icon drawer */
+.topbar{height:64px;padding:0 15px;gap:11px;background:#0b1020eF;border-bottom-color:#ffffff0c}
+.menu-toggle{width:38px;height:38px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px;flex-shrink:0;border:1px solid #ffffff16;border-radius:12px;background:#ffffff06}
+.menu-toggle span{width:17px;height:1.5px;border-radius:3px;background:#dce6fa}
+.brandmark{width:36px;height:36px;border-radius:12px;font-size:21px}
+.brand b{font-size:11px;letter-spacing:1.5px}.brand small{font-size:8px;letter-spacing:.8px}
+.iconbtn{margin-left:auto;width:38px;height:38px;border-radius:12px}
+main{max-width:760px;padding:16px 14px 28px;min-height:calc(100dvh - 105px)}
+#view{min-height:65vh}
+footer{padding:12px 14px 18px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.drawer-scrim{position:fixed;inset:0;background:#030611b8;backdrop-filter:blur(3px);z-index:20}
+.drawer-scrim[hidden]{display:none}
+.app-drawer{position:fixed;z-index:21;top:0;bottom:0;left:0;width:min(86vw,350px);padding:20px 16px 18px;background:linear-gradient(160deg,#141d32,#0a0e19 70%);border-right:1px solid #ffffff16;box-shadow:24px 0 70px #0008;transform:translateX(-105%);transition:transform .24s ease;overflow-y:auto}
+.app-drawer.open{transform:translateX(0)}
+.drawer-heading{display:flex;align-items:center;gap:11px;padding:4px 0 20px;border-bottom:1px solid #ffffff12}
+.drawer-heading>div:nth-child(2){display:flex;flex-direction:column;gap:5px;min-width:0}
+.drawer-heading b{font-size:11px;letter-spacing:1px}.drawer-heading small{font-family:'Noto Sans Myanmar',sans-serif;font-size:10px;color:#8f9bb4}
+.drawer-close{margin-left:auto;width:34px;height:34px;border:1px solid #ffffff15;border-radius:10px;background:#ffffff08;color:#eaf1ff;font-size:24px;line-height:1}
+.drawer-label{margin:22px 0 12px;font-family:'Noto Sans Myanmar',sans-serif;color:#8997b3;font-size:11px}
+.drawer-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.drawer-item{min-height:118px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:7px;padding:13px 12px;border:1px solid #ffffff13;border-radius:17px;background:#ffffff05;color:#eaf0ff;text-align:left;transition:transform .15s,border-color .15s,background .15s}
+.drawer-item:active{transform:scale(.97)}
+.drawer-item.selected{border-color:#78e9f55c;background:#78e9f50c}
+.drawer-icon{width:39px;height:39px;display:grid;place-items:center;border-radius:13px;font-size:21px;background:#78e9f514;color:#83edf7}
+.drawer-item.violet .drawer-icon{background:#a68bff19;color:#c2aaff}
+.drawer-item.blue .drawer-icon{background:#66b8ff19;color:#8bcaff}
+.drawer-item.amber .drawer-icon{background:#f4c46a19;color:#f4d18a}
+.drawer-item.rose .drawer-icon{background:#ff9db719;color:#ffb5c8}
+.drawer-item b{font-size:12px;font-weight:700}
+.drawer-item small{font-family:'Noto Sans Myanmar',sans-serif;color:#8794ae;font-size:9px;line-height:1.55}
+.drawer-note{margin-top:22px;padding:13px;border:1px solid #ffffff0e;border-radius:13px;background:#ffffff04;font-family:'Noto Sans Myanmar',sans-serif;font-size:10px;color:#9ba8c0}
+.drawer-note span{color:#63f6c6;margin-right:6px}
+body.drawer-open{overflow:hidden}
+.hero,.tabs{display:none!important}
+.section-head{margin:2px 0 15px}
+@media(min-width:600px){.app-drawer{width:350px}.drawer-grid{gap:12px}}
+@media(prefers-reduced-motion:reduce){.app-drawer{transition:none}.drawer-item{transition:none}}
