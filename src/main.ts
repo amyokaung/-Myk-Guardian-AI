@@ -42,38 +42,51 @@ function goBackInApp() {
 
 function render() {
   const perms = readPerms();
+  const menuItems = [
+    {id:'chat',icon:'✳',title:'Chat',sub:'မြန်မာလို စကားပြော',tone:'mint'},
+    {id:'brain',icon:'🧠',title:'Brain',sub:'ကိုယ်ပိုင်မှတ်ဉာဏ်',tone:'violet'},
+    {id:'agent',icon:'✣',title:'Agent',sub:'ဖုန်းလုပ်ဆောင်ချက်များ',tone:'blue'},
+    {id:'permissions',icon:'⛨',title:'Permissions',sub:'ခွင့်ပြုချက်များ',tone:'amber'},
+    {id:'settings',icon:'⚙',title:'Settings',sub:'API နှင့် Model',tone:'rose'}
+  ];
   app.innerHTML = `
     <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
     <header class="topbar">
+      <button class="menu-toggle" id="menuToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
       <div class="brandmark">M<span>✦</span></div>
-      <div class="brand"><b>MYK <span>GUARDIAN</span></b><small>PERSONAL INTELLIGENCE SYSTEM</small></div>
-      <button class="iconbtn" id="settingsShortcut" aria-label="Settings">⚙</button>
+      <div class="brand"><b>MYK <span>GUARDIAN</span></b><small>YOUR PERSONAL AI</small></div>
+      <button class="iconbtn" id="headerAction" aria-label="${activeTab==='chat'?'Open menu':'Go to chat'}">${activeTab==='chat'?'＋':'⌂'}</button>
     </header>
-    <main>
-      <section class="hero">
-        <div class="eyebrow"><i></i> SYSTEM READY · USER CONTROLLED</div>
-        <h1>Your world.<br><span>Your command.</span></h1>
-        <p>ကိုယ်ပိုင် AI လက်ထောက် · မင်းထိန်းချုပ်မှုအောက်မှာ</p>
-        <div class="orb-wrap"><div class="orb"><div class="orb-core">M</div></div><div class="orb-label">MYK CORE <span>● STANDBY</span></div></div>
-      </section>
-      <nav class="tabs">
-        <button data-tab="chat" class="${activeTab==='chat'?'active':''}">◈ စကားပြော</button>
-        <button data-tab="brain" class="${activeTab==='brain'?'active':''}">🧠 Brain</button>
-        <button data-tab="agent" class="${activeTab==='agent'?'active':''}">⌘ Agent</button>
-        <button data-tab="permissions" class="${activeTab==='permissions'?'active':''}">⛨ ခွင့်ပြုချက်</button>
-        <button data-tab="settings" class="${activeTab==='settings'?'active':''}">⚙ ဆက်တင်</button>
-      </nav>
-      <section id="view"></section>
-    </main>
-    <footer><span>MYK GUARDIAN AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => navigateTab(b.dataset.tab!)));
-  document.querySelector('#settingsShortcut')?.addEventListener('click', () => navigateTab('settings'));
-  const view = document.querySelector<HTMLElement>('#view')!;
-  if (activeTab === 'chat') renderChat(view);
-  if (activeTab === 'brain') initBrainScreen(view);
-  if (activeTab === 'agent') renderAgent(view, perms);
-  if (activeTab === 'permissions') renderPermissions(view, perms);
-  if (activeTab === 'settings') renderSettings(view);
+    <div class="drawer-scrim" id="drawerScrim" hidden></div>
+    <aside class="app-drawer" id="appDrawer" aria-label="Main menu" aria-hidden="true">
+      <div class="drawer-heading"><div class="brandmark">M<span>✦</span></div><div><b>MYK GUARDIAN</b><small>ကိုယ်ပိုင် AI လက်ထောက်</small></div><button class="drawer-close" id="drawerClose" aria-label="Close menu">×</button></div>
+      <p class="drawer-label">သင့်ရဲ့ လုပ်ဆောင်ချက်များ</p>
+      <div class="drawer-grid">
+        ${menuItems.map(item=>`<button class="drawer-item ${item.tone} ${activeTab===item.id?'selected':''}" data-tab="${item.id}" aria-label="${item.title}"><span class="drawer-icon">${item.icon}</span><b>${item.title}</b><small>${item.sub}</small></button>`).join('')}
+      </div>
+      <div class="drawer-note"><span>●</span> မင်းရဲ့ AI · မင်းထိန်းချုပ်မှု</div>
+    </aside>
+    <main><section id="view"></section></main>
+    <footer><span>MYK GUARDIAN AI</span><span>YOUR SPACE · YOUR CONTROL</span></footer>`;
+  const drawer = app.querySelector<HTMLElement>('#appDrawer')!;
+  const scrim = app.querySelector<HTMLElement>('#drawerScrim')!;
+  const toggle = app.querySelector<HTMLButtonElement>('#menuToggle')!;
+  const setDrawer = (open:boolean) => {
+    drawer.classList.toggle('open',open); scrim.hidden=!open;
+    drawer.setAttribute('aria-hidden',String(!open)); toggle.setAttribute('aria-expanded',String(open));
+    document.body.classList.toggle('drawer-open',open);
+  };
+  toggle.addEventListener('click',()=>setDrawer(!drawer.classList.contains('open')));
+  app.querySelector('#drawerClose')!.addEventListener('click',()=>setDrawer(false));
+  scrim.addEventListener('click',()=>setDrawer(false));
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);navigateTab(b.dataset.tab!);}));
+  app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>activeTab==='chat'?setDrawer(true):navigateTab('chat'));
+  const view=document.querySelector<HTMLElement>('#view')!;
+  if(activeTab==='chat') renderChat(view);
+  if(activeTab==='brain') initBrainScreen(view);
+  if(activeTab==='agent') renderAgent(view,perms);
+  if(activeTab==='permissions') renderPermissions(view,perms);
+  if(activeTab==='settings') renderSettings(view);
 }
 
 function renderChat(view: HTMLElement) {
