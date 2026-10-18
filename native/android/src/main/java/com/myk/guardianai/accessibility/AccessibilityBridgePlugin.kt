@@ -1,6 +1,9 @@
 package com.myk.guardianai.accessibility
 
 import android.content.Intent
+import android.content.ContentValues
+import android.provider.MediaStore
+import java.io.OutputStream
 import android.net.Uri
 import android.content.ComponentName
 import android.media.AudioManager
@@ -11,6 +14,7 @@ import android.location.Geocoder
 import android.provider.AlarmClock
 import java.util.Locale
 import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import com.getcapacitor.JSObject
@@ -19,11 +23,74 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 
 // IMPORTANT: This name must match registerPlugin('MykAccessibility') in src/main.ts
 // and src/native-actions.ts.
-@CapacitorPlugin(name = "MykAccessibility")
+@CapacitorPlugin(
+    name = "MykAccessibility",
+    permissions = [
+        Permission(alias = "media", strings = [
+            android.Manifest.permission.READ_MEDIA_IMAGES,
+            android.Manifest.permission.READ_MEDIA_VIDEO,
+            "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+            android.Manifest.permission.READ_EXTERNAL_STORAGE
+        ]),
+        Permission(alias = "callLog", strings = [android.Manifest.permission.READ_CALL_LOG]),
+        Permission(alias = "sms", strings = [android.Manifest.permission.READ_SMS])
+    ]
+)
 class AccessibilityBridgePlugin : Plugin() {
+    @PluginMethod
+    fun saveTextFile(call: PluginCall) {
+        val fileName = call.getString("fileName")?.trim().orEmpty()
+        val content = call.getString("content").orEmpty()
+        val mimeType = call.getString("mimeType")?.trim().orEmpty().ifBlank { "text/plain" }
+        if (fileName.isBlank() || fileName.contains("/") || fileName.contains("\\\\")) {
+            call.reject("ဖိုင်အမည် မမှန်ပါ။")
+            return
+        }
+        try {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            else MediaStore.Files.getContentUri("external")
+            val uri = resolver.insert(collection, values)
+                ?: throw IllegalStateException("Downloads ဖိုလ်ဒါထဲ ဖိုင်အသစ် မဖန်တီးနိုင်ပါ။")
+            try {
+                resolver.openOutputStream(uri, "w").use { stream ->
+                    if (stream == null) throw IllegalStateException("ဖိုင်ရေးရန် မဖွင့်နိုင်ပါ။")
+                    stream.write(content.toByteArray(Charsets.UTF_8))
+                    stream.flush()
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val ready = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                    resolver.update(uri, ready, null, null)
+                }
+            } catch (error: Exception) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+            val result = JSObject()
+            result.put("success", true)
+            result.put("fileName", fileName)
+            result.put("uri", uri.toString())
+            result.put("location", "Downloads/$fileName")
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("ဖိုင်သိမ်းမရပါ: ${error.message ?: "Android storage error"}", error)
+        }
+    }
+
     @PluginMethod
     fun getStatus(call: PluginCall) {
         val result = JSObject()
@@ -52,7 +119,229 @@ class AccessibilityBridgePlugin : Plugin() {
              context.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED)
         result.put("microphoneGranted", microphoneGranted)
         result.put("locationGranted", locationGranted)
+        val appOps = context.getSystemService(android.content.Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+        @Suppress("DEPRECATION")
+        val usageMode = appOps.checkOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), context.packageName)
+        result.put("usageAccessGranted", usageMode == android.app.AppOpsManager.MODE_ALLOWED)
+        val mediaReadGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                context.checkSelfPermission("android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+        } else true
+        result.put("mediaReadGranted", mediaReadGranted)
+        val callLogGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            context.checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+        result.put("callLogGranted", callLogGranted)
         call.resolve(result)
+    }
+
+    @PluginMethod
+    fun requestPersonalPermissions(call: PluginCall) {
+        requestPermissionForAliases(arrayOf("media", "callLog", "sms"), call, "personalPermissionsCallback")
+    }
+
+    @PermissionCallback
+    private fun personalPermissionsCallback(call: PluginCall) {
+        val result = JSObject()
+        fun granted(permission: String): Boolean =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+        val mediaGranted = if (Build.VERSION.SDK_INT >= 34) {
+            granted(android.Manifest.permission.READ_MEDIA_IMAGES) ||
+                granted(android.Manifest.permission.READ_MEDIA_VIDEO) ||
+                granted("android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
+        } else if (Build.VERSION.SDK_INT >= 33) {
+            granted(android.Manifest.permission.READ_MEDIA_IMAGES) ||
+                granted(android.Manifest.permission.READ_MEDIA_VIDEO)
+        } else granted(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        result.put("mediaGranted", mediaGranted)
+        result.put("callLogGranted", granted(android.Manifest.permission.READ_CALL_LOG))
+        result.put("smsGranted", granted(android.Manifest.permission.READ_SMS))
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun openAllFilesAccessSettings(call: PluginCall) {
+        try {
+            val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:" + context.packageName))
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null))
+            }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: Exception) {
+            call.reject("ဖိုင်ခွင့်ပြုချက် Settings မဖွင့်နိုင်ပါ: " + error.message, error)
+        }
+    }
+
+    @PluginMethod
+    fun scanPersonalDeviceData(call: PluginCall) {
+        Thread {
+            try {
+                val pm = context.packageManager
+                val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
+                } else {
+                    @Suppress("DEPRECATION")
+                    pm.getInstalledApplications(0)
+                }
+                val appArray = JSArray()
+                apps.filter { pm.getLaunchIntentForPackage(it.packageName) != null }
+                    .sortedBy { pm.getApplicationLabel(it).toString().lowercase(Locale.ROOT) }
+                    .forEach { info ->
+                        val item = JSObject()
+                        item.put("name", pm.getApplicationLabel(info).toString())
+                        item.put("packageName", info.packageName)
+                        appArray.put(item)
+                    }
+
+                fun countMedia(uri: Uri, projection: Array<String>): Int {
+                    return try {
+                        context.contentResolver.query(uri, projection, null, null, null)?.use { cursor -> cursor.count } ?: 0
+                    } catch (_: Exception) { 0 }
+                }
+                val mediaReadGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.checkSelfPermission(android.Manifest.permission.READ_MEDIA_IMAGES) == PackageManager.PERMISSION_GRANTED ||
+                        context.checkSelfPermission("android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                } else true
+                val images = countMedia(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.Images.Media._ID))
+                val videos = countMedia(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI, arrayOf(android.provider.MediaStore.Video.Media._ID))
+
+                val appOps = context.getSystemService(android.content.Context.APP_OPS_SERVICE) as android.app.AppOpsManager
+                @Suppress("DEPRECATION")
+                val usageMode = appOps.checkOpNoThrow("android:get_usage_stats", android.os.Process.myUid(), context.packageName)
+                val usageAllowed = usageMode == android.app.AppOpsManager.MODE_ALLOWED
+                val usageArray = JSArray()
+                if (usageAllowed) {
+                    val manager = context.getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+                    val end = System.currentTimeMillis()
+                    val start = end - 7L * 24 * 60 * 60 * 1000
+                    manager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, start, end)
+                        .filter { it.totalTimeInForeground > 0 }
+                        .sortedByDescending { it.totalTimeInForeground }
+                        .take(30).forEach { stat ->
+                            val item = JSObject()
+                            item.put("packageName", stat.packageName)
+                            item.put("foregroundMs7Days", stat.totalTimeInForeground)
+                            try { item.put("appName", pm.getApplicationLabel(pm.getApplicationInfo(stat.packageName, 0)).toString()) }
+                            catch (_: Exception) { item.put("appName", stat.packageName) }
+                            usageArray.put(item)
+                        }
+                }
+
+                val callsArray = JSArray()
+                val callLogAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                    context.checkSelfPermission(android.Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+                if (callLogAllowed) {
+                    try {
+                        context.contentResolver.query(android.provider.CallLog.Calls.CONTENT_URI,
+                            arrayOf(android.provider.CallLog.Calls.TYPE, android.provider.CallLog.Calls.DATE, android.provider.CallLog.Calls.DURATION),
+                            null, null, android.provider.CallLog.Calls.DATE + " DESC")?.use { cursor ->
+                            var n = 0
+                            while (cursor.moveToNext() && n < 30) {
+                                val item = JSObject()
+                                item.put("type", cursor.getInt(0))
+                                item.put("date", cursor.getLong(1))
+                                item.put("durationSeconds", cursor.getLong(2))
+                                callsArray.put(item); n++
+                            }
+                        }
+                    } catch (_: SecurityException) { }
+                }
+
+                val smsArray = JSArray()
+                val smsAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                    context.checkSelfPermission(android.Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+                if (smsAllowed) {
+                    try {
+                        context.contentResolver.query(
+                            Uri.parse("content://sms/inbox"),
+                            arrayOf("_id", "address", "body", "date", "type"),
+                            null, null, "date DESC"
+                        )?.use { cursor ->
+                            var n = 0
+                            while (cursor.moveToNext() && n < 50) {
+                                val item = JSObject()
+                                item.put("address", cursor.getString(1).orEmpty())
+                                item.put("body", cursor.getString(2).orEmpty().take(2000))
+                                item.put("date", cursor.getLong(3))
+                                item.put("type", cursor.getInt(4))
+                                smsArray.put(item)
+                                n++
+                            }
+                        }
+                    } catch (_: SecurityException) { }
+                }
+
+                val allFilesAccessGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+                val sharedFiles = JSArray()
+                if (allFilesAccessGranted) {
+                    val root = Environment.getExternalStorageDirectory()
+                    val queue = java.util.ArrayDeque<Pair<java.io.File, Int>>()
+                    queue.add(root to 0)
+                    var fileCount = 0
+                    while (queue.isNotEmpty() && fileCount < 200) {
+                        val (folder, depth) = queue.removeFirst()
+                        val children = try { folder.listFiles() } catch (_: Exception) { null } ?: continue
+                        for (child in children) {
+                            if (fileCount >= 200) break
+                            if (child.isDirectory) {
+                                if (depth < 3 && child.name != "Android") queue.add(child to depth + 1)
+                            } else if (child.isFile && child.canRead()) {
+                                val item = JSObject()
+                                item.put("name", child.name)
+                                item.put("path", child.absolutePath)
+                                item.put("sizeBytes", child.length())
+                                item.put("modifiedAt", child.lastModified())
+                                sharedFiles.put(item)
+                                fileCount++
+                            }
+                        }
+                    }
+                }
+
+                val result = JSObject()
+                result.put("installedApps", appArray)
+                result.put("imageCount", images)
+                result.put("videoCount", videos)
+                result.put("mediaReadGranted", mediaReadGranted)
+                result.put("allFilesAccessGranted", allFilesAccessGranted)
+                result.put("sharedFiles", sharedFiles)
+                result.put("usageAccessGranted", usageAllowed)
+                result.put("usageLast7Days", usageArray)
+                result.put("callLogPermissionGranted", callLogAllowed)
+                result.put("recentCalls", callsArray)
+                result.put("smsPermissionGranted", smsAllowed)
+                result.put("recentSms", smsArray)
+                result.put("scannedAt", System.currentTimeMillis())
+                call.resolve(result)
+            } catch (error: Exception) {
+                call.reject("ဖုန်း Data ကို scan မလုပ်နိုင်ပါ: ${error.message}", error)
+            }
+        }.start()
+    }
+
+    @PluginMethod
+    fun openUsageAccessSettings(call: PluginCall) {
+        openSettings(call, Settings.ACTION_USAGE_ACCESS_SETTINGS)
+    }
+
+    @PluginMethod
+    fun openMykAppSettings(call: PluginCall) {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: Exception) {
+            call.reject("Myk App Permission Settings မဖွင့်နိုင်ပါ: ${error.message}", error)
+        }
     }
 
     @PluginMethod
