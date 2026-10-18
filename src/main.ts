@@ -1,4 +1,5 @@
 import './style.css';
+import { initMemoryImport } from './personal-memory-import';
 import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
@@ -706,7 +707,7 @@ function renderSettings(view: HTMLElement) {
   view.querySelector<HTMLButtonElement>('#clearMemoryDraft')!.addEventListener('click',()=>{
     memoryDraft=null;memoryMarkdown='';memoryPreview.textContent='Preview ဖျက်ပြီးပါပြီ။';
     scanStatus.textContent='ယာယီ Memory draft ကို ရှင်းလိုက်ပါပြီ။';jsonDownload.disabled=true;mdDownload.disabled=true;
-  });
+  });  initMemoryImport(view, MykNative);
 }
 
 let consumingWakeCommand = false;
