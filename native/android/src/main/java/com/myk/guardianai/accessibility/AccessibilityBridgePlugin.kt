@@ -1,6 +1,9 @@
 package com.myk.guardianai.accessibility
 
 import android.content.Intent
+import android.content.ContentValues
+import android.provider.MediaStore
+import java.io.OutputStream
 import android.net.Uri
 import android.content.ComponentName
 import android.media.AudioManager
@@ -39,6 +42,55 @@ import com.getcapacitor.annotation.PermissionCallback
     ]
 )
 class AccessibilityBridgePlugin : Plugin() {
+    @PluginMethod
+    fun saveTextFile(call: PluginCall) {
+        val fileName = call.getString("fileName")?.trim().orEmpty()
+        val content = call.getString("content").orEmpty()
+        val mimeType = call.getString("mimeType")?.trim().orEmpty().ifBlank { "text/plain" }
+        if (fileName.isBlank() || fileName.contains("/") || fileName.contains("\\\\")) {
+            call.reject("ဖိုင်အမည် မမှန်ပါ။")
+            return
+        }
+        try {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            }
+            val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            else MediaStore.Files.getContentUri("external")
+            val uri = resolver.insert(collection, values)
+                ?: throw IllegalStateException("Downloads ဖိုလ်ဒါထဲ ဖိုင်အသစ် မဖန်တီးနိုင်ပါ။")
+            try {
+                resolver.openOutputStream(uri, "w").use { stream ->
+                    if (stream == null) throw IllegalStateException("ဖိုင်ရေးရန် မဖွင့်နိုင်ပါ။")
+                    stream.write(content.toByteArray(Charsets.UTF_8))
+                    stream.flush()
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val ready = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
+                    resolver.update(uri, ready, null, null)
+                }
+            } catch (error: Exception) {
+                resolver.delete(uri, null, null)
+                throw error
+            }
+            val result = JSObject()
+            result.put("success", true)
+            result.put("fileName", fileName)
+            result.put("uri", uri.toString())
+            result.put("location", "Downloads/$fileName")
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("ဖိုင်သိမ်းမရပါ: ${error.message ?: "Android storage error"}", error)
+        }
+    }
+
     @PluginMethod
     fun getStatus(call: PluginCall) {
         val result = JSObject()
