@@ -41,20 +41,24 @@ export async function getBrainItems(): Promise<BrainItem[]> {
   } catch { return fallbackRead(); }
 }
 export async function putBrainItem(item: BrainItem): Promise<void> {
+  await putBrainItems([item]);
+}
+async function putBrainItems(items: BrainItem[]): Promise<void> {
   try {
     const db = await openDb();
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
-      tx.objectStore(STORE_NAME).put(item);
+      const store = tx.objectStore(STORE_NAME);
+      items.forEach(item => store.put(item));
       tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => { db.close(); reject(tx.error); };
       tx.onabort = () => { db.close(); reject(tx.error || new Error('သိမ်းဆည်းမှု ပယ်ဖျက်ခံရသည်')); };
     });
   } catch {
     const all = fallbackRead();
-    const index = all.findIndex(x => x.id === item.id);
-    if (index >= 0) all[index] = item; else all.push(item);
-    fallbackWrite(all);
+    const byId = new Map(all.map(item => [item.id, item]));
+    items.forEach(item => byId.set(item.id, item));
+    fallbackWrite([...byId.values()]);
   }
 }
 export async function removeBrainItem(id: string): Promise<void> {
@@ -159,9 +163,11 @@ export async function importBrainFile(file: File): Promise<{ added: number; skip
     const signature = (item.title + '|' + item.content).toLocaleLowerCase().replace(/\s+/g, ' ').trim();
     if (signatures.has(signature)) { skipped++; continue; }
     signatures.add(signature);
-    await putBrainItem(item);
     added++;
   }
+  const toAdd = incoming.filter(item => !existing.some(x => x.id === item.id) && signatures.has((item.title + '|' + item.content).toLocaleLowerCase().replace(/\\s+/g, ' ').trim()));
+  // Batch the IndexedDB writes so large memory imports do not open a transaction per record.
+  await putBrainItems(toAdd);
   return { added, skipped };
 }
 function queryTerms(query: string): string[] {
