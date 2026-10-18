@@ -41,3 +41,46 @@ body.drawer-open{overflow:hidden}
 .section-head{margin:2px 0 15px}
 @media(min-width:600px){.app-drawer{width:350px}.drawer-grid{gap:12px}}
 @media(prefers-reduced-motion:reduce){.app-drawer{transition:none}.drawer-item{transition:none}}
+
+/* ChatGPT-like composer and chat history */
+.chat-screen{min-height:calc(100dvh - 128px);display:flex;flex-direction:column;position:relative;padding-bottom:5px}
+.chat-transcript{flex:1;min-height:30vh;max-height:calc(100dvh - 225px);overflow:auto;padding:8px 2px 22px;scroll-behavior:smooth}
+.chat-transcript .messages{max-width:720px;margin:0 auto;gap:22px}
+.chat-transcript .message{max-width:100%;width:100%;padding:8px 3px;background:transparent!important;border:0!important;border-radius:0;color:#e9edf6;font-size:14px;line-height:1.9}
+.chat-transcript .message.user,.chat-transcript .message.assistant{align-self:stretch;text-align:left}
+.chat-transcript .msg-label{font-size:9px;opacity:.65;margin-bottom:4px}
+.message-text{overflow-wrap:anywhere}
+.composer-wrap{position:sticky;bottom:0;z-index:4;margin:0 auto;width:100%;max-width:720px;padding:8px 0 5px;background:linear-gradient(180deg,#080b1400,#080b14 18%)}
+.chatgpt-composer{align-items:flex-end;gap:7px;margin:0;padding:8px 8px 8px 10px;border:1px solid #ffffff20;border-radius:28px;background:#202532;box-shadow:0 8px 32px #0003;min-height:54px}
+.chatgpt-composer:focus-within{border-color:#ffffff38}
+.chatgpt-composer textarea{min-height:36px;max-height:180px;resize:none;overflow-y:auto;border:0!important;background:transparent!important;box-shadow:none!important;padding:8px 4px;color:#f4f6fb;font-family:'Noto Sans Myanmar',sans-serif;font-size:14px;line-height:1.55}
+.chatgpt-composer textarea::placeholder{color:#9da6b7}
+.composer-icon{width:36px;height:36px;min-width:36px;display:grid;place-items:center;border:0;border-radius:50%;background:transparent;color:#dfe5f2;flex-shrink:0}
+.plus-button{font-size:28px;font-weight:300;color:#e5e9f2}
+.mic-button svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.mic-button.listening{background:#643b48;color:#ffb6c5;animation:micPulse 1s infinite alternate}
+@keyframes micPulse{to{box-shadow:0 0 0 5px #ff9eb51c}}
+.chatgpt-composer .send{width:36px;height:36px;min-width:36px;border-radius:50%;background:#f2f4f8;color:#111522;font-size:24px;line-height:1;font-weight:700;padding:0}
+.composer-hint{text-align:center;font-family:'Noto Sans Myanmar',sans-serif;color:#78839a;font-size:9px;margin-top:8px}
+.pending-files{display:flex;gap:8px;overflow-x:auto;padding:0 3px 8px;flex-wrap:wrap}
+.pending-files:empty{display:none}
+.attachment-thumb{width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid #ffffff28}
+.message-attachments{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 8px}
+.message-attachments .attachment-thumb{width:100px;height:100px}
+.attachment-chip{display:inline-flex;align-items:center;gap:6px;background:#2b3342;border:1px solid #ffffff14;border-radius:10px;padding:8px 10px;color:#d9e2f3;font-size:10px;max-width:100%;overflow-wrap:anywhere}
+.attach-popover{position:fixed;left:14px;bottom:100px;z-index:30;width:190px;padding:7px;border:1px solid #ffffff1b;border-radius:16px;background:#202635;box-shadow:0 12px 36px #0008}
+.attach-popover[hidden]{display:none}
+.attach-popover button{display:flex;align-items:center;gap:12px;width:100%;padding:12px;border:0;border-radius:10px;background:transparent;color:#e9edf6;text-align:left;font-family:'Noto Sans Myanmar',sans-serif;font-size:12px}
+.attach-popover button:active{background:#ffffff12}
+.attach-popover button span{font-size:20px;color:#9beef5}
+.drawer-new-chat{display:flex;align-items:center;gap:10px;width:100%;margin-top:18px;padding:12px;border:1px solid #ffffff1c;border-radius:12px;background:#ffffff08;color:#f1f5ff;text-align:left;font-size:12px}
+.drawer-new-chat span{font-size:22px}
+.history-heading{margin:21px 4px 8px;color:#8290aa;font-size:10px;text-transform:uppercase;letter-spacing:1px}
+.chat-history-list{display:flex;flex-direction:column;gap:4px}
+.history-row{display:flex;align-items:center;gap:3px}
+.history-item{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:10px;border:0;border-radius:10px;background:transparent;color:#dce3f1;text-align:left;font-size:11px}
+.history-item.current,.history-item:active{background:#ffffff0d}
+.history-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-delete{border:0;background:transparent;color:#7f8ba1;font-size:17px;padding:6px}
+.history-empty{padding:10px;color:#68758e;font-family:'Noto Sans Myanmar',sans-serif;font-size:10px}
+@media(max-width:420px){.chat-transcript{max-height:calc(100dvh - 220px);padding-left:0;padding-right:0}.chatgpt-composer{gap:4px;padding:7px}.composer-icon{width:32px;height:32px;min-width:32px}.chatgpt-composer .send{width:32px;height:32px;min-width:32px}.plus-button{font-size:25px}.chatgpt-composer textarea{font-size:13px}.composer-hint{font-size:8px}}
