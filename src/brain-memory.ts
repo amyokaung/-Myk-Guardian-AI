@@ -159,13 +159,14 @@ export async function importBrainFile(file: File): Promise<{ added: number; skip
   const existing = await getBrainItems();
   const signatures = new Set(existing.map(x => (x.title + '|' + x.content).toLocaleLowerCase().replace(/\s+/g, ' ').trim()));
   let added = 0, skipped = 0;
+  const toAdd: BrainItem[] = [];
   for (const item of incoming) {
     const signature = (item.title + '|' + item.content).toLocaleLowerCase().replace(/\s+/g, ' ').trim();
     if (signatures.has(signature)) { skipped++; continue; }
     signatures.add(signature);
+    toAdd.push(item);
     added++;
   }
-  const toAdd = incoming.filter(item => !existing.some(x => x.id === item.id) && signatures.has((item.title + '|' + item.content).toLocaleLowerCase().replace(/\\s+/g, ' ').trim()));
   // Batch the IndexedDB writes so large memory imports do not open a transaction per record.
   await putBrainItems(toAdd);
   return { added, skipped };
