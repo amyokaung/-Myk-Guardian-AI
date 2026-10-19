@@ -1,4 +1,5 @@
 import './style.css';
+import { AMARA_SYSTEM_PROMPT } from './amara-persona';
 import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
@@ -19,7 +20,7 @@ const readPerms = (): Record<string, boolean> => {
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let messages: Message[] = [
-  { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
+  { role: 'assistant', content: 'မင်္ဂလာပါ။ အမရာပါ။ 😊 မင်းဘာလိုအပ်လဲ ပြောလိုက်နော်။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
 let busy = false;
@@ -30,7 +31,7 @@ function render() {
     <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
     <header class="topbar">
       <div class="brandmark">M<span>✦</span></div>
-      <div class="brand"><b>MYK <span>GUARDIAN</span></b><small>PERSONAL INTELLIGENCE SYSTEM</small></div>
+      <div class="brand"><b>AMARA <span>AI</span></b><small>PERSONAL AI COMPANION</small></div>
       <button class="iconbtn" id="settingsShortcut" aria-label="Settings">⚙</button>
     </header>
     <main>
@@ -38,7 +39,7 @@ function render() {
         <div class="eyebrow"><i></i> SYSTEM READY · USER CONTROLLED</div>
         <h1>Your world.<br><span>Your command.</span></h1>
         <p>ကိုယ်ပိုင် AI လက်ထောက် · မင်းထိန်းချုပ်မှုအောက်မှာ</p>
-        <div class="orb-wrap"><div class="orb"><div class="orb-core">M</div></div><div class="orb-label">MYK CORE <span>● STANDBY</span></div></div>
+        <div class="orb-wrap"><div class="orb"><div class="orb-core">A</div></div><div class="orb-label">AMARA CORE <span>● STANDBY</span></div></div>
       </section>
       <nav class="tabs">
         <button data-tab="chat" class="${activeTab==='chat'?'active':''}">◈ စကားပြော</button>
@@ -48,7 +49,7 @@ function render() {
       </nav>
       <section id="view"></section>
     </main>
-    <footer><span>MYK GUARDIAN AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
+    <footer><span>AMARA AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
   app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => {
     activeTab = b.dataset.tab!;
     render();
@@ -64,8 +65,8 @@ function render() {
 function renderChat(view: HTMLElement) {
   view.innerHTML = `
     <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
-    <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'MYK AI'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
-    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
+    <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'AMARA'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
+    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="အမရာကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
     <p class="hint">App ဖွင့်ခြင်း၊ လက်ရှိသီချင်းကျော်ခြင်းနှင့် Back Action တို့ကို ပံ့ပိုးထားသလို လုပ်ဆောင်မည်။ Android ခွင့်ပြုချက်နှင့် လက်ရှိ App ပံ့ပိုးမှုအပေါ် မူတည်နိုင်သည်။</p>`;
   view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
@@ -111,7 +112,7 @@ const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', descripti
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
   const history = messages.slice(-20);
-  const systemPrompt = 'You are Myk Guardian AI, a careful Burmese-first Android personal assistant. Understand natural Burmese and English commands. If the user requests a phone action that matches an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
+  const systemPrompt = AMARA_SYSTEM_PROMPT;
   try {
     let answer = '';
     if (provider === 'gemini') {
@@ -136,7 +137,7 @@ async function askAI() {
       const key = localStorage.getItem(KEY_NAME)?.trim();
       if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
       const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'AMARA AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
       const message = data?.choices?.[0]?.message;
@@ -145,7 +146,7 @@ async function askAI() {
         let args: Record<string, unknown> = {};
         try { args = JSON.parse(call.function.arguments || '{}'); } catch { throw new Error('AI action argument မမှန်ပါ။'); }
         const result = await executeAgentAction(String(args.action || ''), args);
-        const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
+        const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'AMARA AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content })), { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
         const followData = await follow.json();
         if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
         answer = followData?.choices?.[0]?.message?.content?.trim() || result;
@@ -175,7 +176,7 @@ function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
     </div>
     <div class="card"><div class="card-title">အလုပ်လုပ်ခွင့်အခြေအနေ</div>${capabilities.map(c=>`<div class="status-row"><div><b>${c.title}</b><small>${c.level}</small></div><span class="state ${perms[c.id]?'enabled':''}">${perms[c.id]?'ENABLED':'DISABLED'}</span></div>`).join('')}</div>`;
   view.querySelector('#openSettings')?.addEventListener('click', async () => {
-    if (!confirm('Android Accessibility Settings ကို ဖွင့်မလား? Myk Guardian AI ကို ကိုယ်တိုင်ရွေးပြီး Enable လုပ်နိုင်ပါတယ်။')) return;
+    if (!confirm('Android Accessibility Settings ကို ဖွင့်မလား? AMARA AI ကို ကိုယ်တိုင်ရွေးပြီး Enable လုပ်နိုင်ပါတယ်။')) return;
     try { await MykNative.openAccessibilitySettings(); }
     catch (err) { alert('Android Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
@@ -231,7 +232,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     button.disabled = true;
     try {
       const permission = await VoiceRecorder.requestAudioRecordingPermission();
-      if (!permission.value) throw new Error('Android က microphone permission ကို ခွင့်မပြုပါ။ ဖုန်း Settings > Apps > Myk Guardian AI > Permissions > Microphone ကို Allow လုပ်ပြီး ထပ်စမ်းပါ။');
+      if (!permission.value) throw new Error('Android က microphone permission ကို ခွင့်မပြုပါ။ ဖုန်း Settings > Apps > AMARA AI > Permissions > Microphone ကို Allow လုပ်ပြီး ထပ်စမ်းပါ။');
       await VoiceRecorder.startRecording();
       await new Promise(resolve => window.setTimeout(resolve, 500));
       await VoiceRecorder.stopRecording();
@@ -256,11 +257,11 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   };
   void refreshNativeStatus();
   view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
-    try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ Myk Guardian AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
+    try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ AMARA AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
     catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   view.querySelector<HTMLButtonElement>('#enableNotifications')!.addEventListener('click', async () => {
-    try { await MykNative.openNotificationSettings(); alert('Notification Access စာမျက်နှာမှာ Myk Guardian AI ကို ဖွင့်ပေးပါ။'); }
+    try { await MykNative.openNotificationSettings(); alert('Notification Access စာမျက်နှာမှာ AMARA AI ကို ဖွင့်ပေးပါ။'); }
     catch (err) { alert('Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
@@ -268,7 +269,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     try {
       const status = await MykNative.getStatus();
       if (!status.accessibilityEnabled) {
-        alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > Myk Guardian AI ကို On လုပ်ပါ။');
+        alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > AMARA AI ကို On လုပ်ပါ။');
         return;
       }
       const result = await MykNative.performAction({ action: 'back' });
