@@ -92,6 +92,41 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     @PluginMethod
+    fun writeBrainBackup(call: PluginCall) {
+        val content = call.getString("content") ?: run {
+            call.reject("Brain JSON အကြောင်းအရာ မပါပါ။")
+            return
+        }
+        try {
+            val directory = java.io.File(context.filesDir, "myk-guardian")
+            if (!directory.exists() && !directory.mkdirs()) throw IllegalStateException("Brain ဖိုလ်ဒါ မဖန်တီးနိုင်ပါ။")
+            val file = java.io.File(directory, "myk_personal_memory.json")
+            file.writeText(content, Charsets.UTF_8)
+            val result = JSObject()
+            result.put("success", true)
+            result.put("location", file.absolutePath)
+            result.put("sizeBytes", file.length())
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("Brain JSON သိမ်းမရပါ: ${error.message ?: "Storage error"}", error)
+        }
+    }
+
+    @PluginMethod
+    fun readBrainBackup(call: PluginCall) {
+        try {
+            val file = java.io.File(java.io.File(context.filesDir, "myk-guardian"), "myk_personal_memory.json")
+            val result = JSObject()
+            result.put("found", file.isFile)
+            result.put("content", if (file.isFile) file.readText(Charsets.UTF_8) else "")
+            result.put("location", file.absolutePath)
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("Brain JSON ဖတ်မရပါ: ${error.message ?: "Storage error"}", error)
+        }
+    }
+
+    @PluginMethod
     fun getStatus(call: PluginCall) {
         val result = JSObject()
         val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
