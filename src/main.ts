@@ -24,81 +24,131 @@ let messages: Message[] = [
 ];
 let activeTab = 'chat';
 let busy = false;
+type SavedChat = { id: string; title: string; updatedAt: number; messages: Message[] };
+const CHAT_STORE = 'amara.chat.history.v1';
+let activeChatId = 'chat-' + Date.now();
+let savedChats: SavedChat[] = (() => { try { const x = JSON.parse(localStorage.getItem(CHAT_STORE) || '[]'); return Array.isArray(x) ? x : []; } catch { return []; } })();
+function persistCurrentChat() {
+  const existing = savedChats.findIndex(c => c.id === activeChatId);
+  const firstUser = messages.find(m => m.role === 'user')?.content || '';
+  const chat: SavedChat = { id: activeChatId, title: firstUser.slice(0, 36) || 'New chat', updatedAt: Date.now(), messages: messages.map(m => ({...m})) };
+  if (existing >= 0) savedChats[existing] = chat; else savedChats.unshift(chat);
+  savedChats = savedChats.slice(0, 40);
+  try { localStorage.setItem(CHAT_STORE, JSON.stringify(savedChats)); } catch {}
+}
+function startNewChat() {
+  persistCurrentChat();
+  activeChatId = 'chat-' + Date.now();
+  messages = [{ role: 'assistant', content: 'မင်္ဂလာပါ။ အမရာပါ။ 😊 ဘာကူညီပေးရမလဲ။' }];
+  activeTab = 'chat';
+  render();
+}
 
 function render() {
   const perms = readPerms();
+  const menuItems = [
+    {id:'chat',icon:'✳',title:'Chat',sub:'မြန်မာလို စကားပြော',tone:'mint'},
+    {id:'brain',icon:'🧠',title:'Brain',sub:'ကိုယ်ပိုင်မှတ်ဉာဏ်',tone:'violet'},
+    {id:'agent',icon:'✣',title:'Agent',sub:'ဖုန်းလုပ်ဆောင်ချက်များ',tone:'blue'},
+    {id:'permissions',icon:'⛨',title:'Permissions',sub:'ခွင့်ပြုချက်များ',tone:'amber'},
+    {id:'settings',icon:'⚙',title:'Settings',sub:'API နှင့် Model',tone:'rose'}
+  ];
   app.innerHTML = `
     <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
     <header class="topbar">
-      <div class="brandmark">M<span>✦</span></div>
-      <div class="brand"><b>AMARA <span>AI</span></b><small>PERSONAL AI COMPANION</small></div>
-      <button class="iconbtn" id="settingsShortcut" aria-label="Settings">⚙</button>
+      <button class="menu-toggle" id="menuToggle" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+      <div class="brandmark">A<span>✦</span></div>
+      <div class="brand"><b>AMARA <span>AI</span></b><small>YOUR PERSONAL AI</small></div>
+      <button class="iconbtn" id="headerAction" aria-label="${activeTab==='chat'?'New chat':'Go to chat'}">${activeTab==='chat'?'＋':'⌂'}</button>
     </header>
-    <main>
-      <section class="hero">
-        <div class="eyebrow"><i></i> SYSTEM READY · USER CONTROLLED</div>
-        <h1>Your world.<br><span>Your command.</span></h1>
-        <p>ကိုယ်ပိုင် AI လက်ထောက် · မင်းထိန်းချုပ်မှုအောက်မှာ</p>
-        <div class="orb-wrap"><div class="orb"><div class="orb-core">A</div></div><div class="orb-label">AMARA CORE <span>● STANDBY</span></div></div>
-      </section>
-      <nav class="tabs">
-        <button data-tab="chat" class="${activeTab==='chat'?'active':''}">◈ စကားပြော</button>
-        <button data-tab="agent" class="${activeTab==='agent'?'active':''}">⌘ Agent</button>
-        <button data-tab="permissions" class="${activeTab==='permissions'?'active':''}">⛨ ခွင့်ပြုချက်</button>
-        <button data-tab="settings" class="${activeTab==='settings'?'active':''}">⚙ ဆက်တင်</button>
-      </nav>
-      <section id="view"></section>
-    </main>
-    <footer><span>AMARA AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => {
-    activeTab = b.dataset.tab!;
-    render();
-  }));
-  document.querySelector('#settingsShortcut')?.addEventListener('click', () => { activeTab = 'settings'; render(); });
-  const view = document.querySelector<HTMLElement>('#view')!;
-  if (activeTab === 'chat') renderChat(view);
-  if (activeTab === 'agent') renderAgent(view, perms);
-  if (activeTab === 'permissions') renderPermissions(view, perms);
-  if (activeTab === 'settings') renderSettings(view);
+    <div class="drawer-scrim" id="drawerScrim" hidden></div>
+    <aside class="app-drawer" id="appDrawer" aria-label="Main menu" aria-hidden="true">
+      <div class="drawer-heading"><div class="brandmark">A<span>✦</span></div><div><b>AMARA AI</b><small>ကိုယ်ပိုင် AI လက်ထောက်</small></div><button class="drawer-close" id="drawerClose" aria-label="Close menu">×</button></div>
+      <p class="drawer-label">လုပ်ဆောင်ချက်များ</p>
+      <div class="drawer-grid">${menuItems.map(item=>`<button class="drawer-item ${item.tone} ${activeTab===item.id?'selected':''}" data-tab="${item.id}"><span class="drawer-icon">${item.icon}</span><b>${item.title}</b><small>${item.sub}</small></button>`).join('')}</div>
+      <button class="drawer-new-chat" id="newChatButton"><span>＋</span> စကားဝိုင်းအသစ် (New chat)</button>
+      <div class="history-heading">Chat history</div><div class="chat-history-list" id="chatHistoryList"></div>
+      <div class="drawer-note"><span>●</span> မင်းရဲ့ AI · မင်းထိန်းချုပ်မှု</div>
+    </aside>
+    <main><section id="view"></section></main>
+    <footer><span>AMARA AI</span><span>YOUR SPACE · YOUR CONTROL</span></footer>`;
+  const drawer = app.querySelector<HTMLElement>('#appDrawer')!;
+  const scrim = app.querySelector<HTMLElement>('#drawerScrim')!;
+  const toggle = app.querySelector<HTMLButtonElement>('#menuToggle')!;
+  const setDrawer = (open:boolean) => {
+    drawer.classList.toggle('open',open); scrim.hidden=!open;
+    drawer.setAttribute('aria-hidden',String(!open)); toggle.setAttribute('aria-expanded',String(open));
+    document.body.classList.toggle('drawer-open',open);
+  };
+  toggle.addEventListener('click',()=>setDrawer(!drawer.classList.contains('open')));
+  app.querySelector('#drawerClose')!.addEventListener('click',()=>setDrawer(false));
+  scrim.addEventListener('click',()=>setDrawer(false));
+  app.querySelector<HTMLButtonElement>('#newChatButton')!.addEventListener('click',()=>{setDrawer(false);startNewChat();});
+  const historyList=app.querySelector<HTMLElement>('#chatHistoryList')!;
+  historyList.innerHTML=savedChats.slice().sort((a,b)=>b.updatedAt-a.updatedAt).map(c=>'<div class="history-row"><button class="history-item '+(c.id===activeChatId?'current':'')+'" data-chat-id="'+esc(c.id)+'"><span>◷</span><span class="history-title">'+esc(c.title||'New chat')+'</span></button><button class="history-delete" data-delete-chat="'+esc(c.id)+'" aria-label="Delete chat">×</button></div>').join('')||'<div class="history-empty">စကားဝိုင်းဟောင်း မရှိသေးပါ</div>';
+  historyList.querySelectorAll<HTMLButtonElement>('[data-chat-id]').forEach(b=>b.addEventListener('click',()=>{const c=savedChats.find(x=>x.id===b.dataset.chatId);if(c){activeChatId=c.id;messages=c.messages.map(m=>({...m}));activeTab='chat';setDrawer(false);render();}}));
+  historyList.querySelectorAll<HTMLButtonElement>('[data-delete-chat]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=(e.currentTarget as HTMLButtonElement).dataset.deleteChat!;savedChats=savedChats.filter(c=>c.id!==id);try{localStorage.setItem(CHAT_STORE,JSON.stringify(savedChats));}catch{}if(id===activeChatId){activeChatId='chat-'+Date.now();messages=[{role:'assistant',content:'မင်္ဂလာပါ။ အမရာပါ။ 😊 ဘာကူညီပေးရမလဲ။'}];}render();}));
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);activeTab=b.dataset.tab!;render();}));
+  app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>{if(activeTab==='chat')startNewChat();else{activeTab='chat';render();}});
+  const view=app.querySelector<HTMLElement>('#view')!;
+  if(activeTab==='chat') renderChat(view);
+  else if(activeTab==='brain') renderBrain(view);
+  else if(activeTab==='agent') renderAgent(view,perms);
+  else if(activeTab==='permissions') renderPermissions(view,perms);
+  else if(activeTab==='settings') renderSettings(view);
 }
 
+function renderBrain(view: HTMLElement) {
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">AMARA BRAIN</span><h2>ကိုယ်ပိုင်မှတ်ဉာဏ်</h2></div><span class="pill">NEXT STAGE</span></div>
+    <div class="card brain-placeholder"><div class="brain-placeholder-icon">🧠</div><h3>AMARA Brain</h3><p class="muted">ကိုယ်ပိုင်မှတ်ဉာဏ် စနစ်ကို နောက်အဆင့်မှာ သေချာစွာ ထည့်သွင်းမယ်။ ဒီအချိန်မှာ မှတ်ဉာဏ်အချက်အလက်တွေကို အလိုအလျောက် စုဆောင်းတာ မလုပ်သေးပါဘူး။</p><button class="primary wide" id="brainBackToChat">Chat ကို ပြန်သွားမယ်</button></div>`;
+  view.querySelector('#brainBackToChat')?.addEventListener('click',()=>{activeTab='chat';render();});
+}
 function renderChat(view: HTMLElement) {
-  view.innerHTML = `
-    <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
-    <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'AMARA'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
-    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="အမရာကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
-    <p class="hint">App ဖွင့်ခြင်း၊ လက်ရှိသီချင်းကျော်ခြင်းနှင့် Back Action တို့ကို ပံ့ပိုးထားသလို လုပ်ဆောင်မည်။ Android ခွင့်ပြုချက်နှင့် လက်ရှိ App ပံ့ပိုးမှုအပေါ် မူတည်နိုင်သည်။</p>`;
+  view.innerHTML = '<section class="chat-screen"><div class="chat-title-row"><div><span class="eyebrow">AMARA · PERSONAL CHAT</span><h2>အမရာနဲ့ စကားပြောမယ်</h2></div><span class="pill"><i></i> '+(busy?'THINKING':'READY')+'</span></div><div class="chat-transcript" id="chatTranscript"><div class="messages" id="messageList"></div></div><div class="composer-wrap"><div id="pendingFiles" class="pending-files"></div><form id="chatForm" class="composer chatgpt-composer"><button class="composer-icon plus-button" id="attachToggle" type="button" aria-label="Attach image or file">＋</button><textarea id="prompt" rows="1" placeholder="အမရာကို မေးပါ…" aria-label="Message AMARA" '+(busy?'disabled':'')+'></textarea><input id="imagePicker" type="file" accept="image/*" multiple hidden><input id="filePicker" type="file" accept=".txt,.md,.json,.csv,.html,.xml,.pdf,.log,text/*,application/json,application/pdf" multiple hidden><button class="composer-icon mic-button" id="voiceInput" type="button" aria-label="Voice input"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"></path></svg></button><button class="composer-icon send" type="submit" aria-label="Send message" '+(busy?'disabled':'')+'>↑</button></form><div class="composer-hint">အမရာ၏ အဖြေတွင် အမှားပါနိုင်သည်။ အရေးကြီးသောအချက်အလက်များကို စစ်ဆေးပါ။</div></div></section><div class="attach-popover" id="attachPopover" hidden><button type="button" id="chooseImages"><span>▧</span> ပုံရွေးရန်</button><button type="button" id="chooseFiles"><span>↥</span> ဖိုင်ရွေးရန်</button></div>';
+  const list=view.querySelector<HTMLElement>('#messageList')!;
+  const renderMessages=()=>{list.innerHTML=messages.map(m=>'<article class="message '+m.role+'"><div class="msg-label">'+(m.role==='user'?'YOU':'AMARA')+'</div><div class="message-text">'+esc(m.content).replace(/\n/g,'<br>')+'</div></article>').join('')+(busy?'<article class="message assistant"><div class="msg-label">AMARA</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':'');};
+  renderMessages();
+  const input=view.querySelector<HTMLTextAreaElement>('#prompt')!;
+  const resize=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';};
+  input.addEventListener('input',resize);
+  input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();view.querySelector<HTMLFormElement>('#chatForm')!.requestSubmit();}});
+  const pop=view.querySelector<HTMLElement>('#attachPopover')!;
+  view.querySelector('#attachToggle')!.addEventListener('click',()=>{pop.hidden=!pop.hidden;});
+  view.querySelector('#chooseImages')!.addEventListener('click',()=>{pop.hidden=true;view.querySelector<HTMLInputElement>('#imagePicker')!.click();});
+  view.querySelector('#chooseFiles')!.addEventListener('click',()=>{pop.hidden=true;view.querySelector<HTMLInputElement>('#filePicker')!.click();});
+  let attachedText='';
+  const addFiles=async(files:FileList|null)=>{if(!files)return;const pending=view.querySelector<HTMLElement>('#pendingFiles')!;const names:string[]=[];for(const file of Array.from(files)){if(file.size>15*1024*1024){alert('ဖိုင်တစ်ဖိုင်လျှင် 15MB အောက်သာ ရွေးနိုင်ပါတယ်။');continue;}names.push(file.name);if(/\.(txt|md|json|csv|html|xml|log)$/i.test(file.name)||file.type.startsWith('text/')||file.type==='application/json'){try{attachedText+='\n\n[ပူးတွဲဖိုင် '+file.name+']\n'+(await file.text()).slice(0,20000);}catch{}}}pending.innerHTML=names.map(n=>'<span class="attachment-chip">📎 '+esc(n)+'</span>').join('');};
+  view.querySelector<HTMLInputElement>('#imagePicker')!.addEventListener('change',e=>{void addFiles((e.currentTarget as HTMLInputElement).files);});
+  view.querySelector<HTMLInputElement>('#filePicker')!.addEventListener('change',e=>{void addFiles((e.currentTarget as HTMLInputElement).files);});
   view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
-    const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
-    const input = view.querySelector<HTMLTextAreaElement>('#prompt')!;
-    button.disabled = true; button.textContent = 'နားထောင်နေသည်…';
+    const button=view.querySelector<HTMLButtonElement>('#voiceInput')!;
+    const prompt=view.querySelector<HTMLTextAreaElement>('#prompt')!;
+    button.disabled=true;button.classList.add('listening');
     try {
-      const available = await SpeechRecognition.available();
-      if (!available.available) throw new Error('ဒီဖုန်းမှာ Speech Recognition မရပါ။ Google Speech Services ကို စစ်ပါ။');
-      const permission = await SpeechRecognition.requestPermissions();
-      if (permission.speechRecognition !== 'granted') throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
-      const result = await SpeechRecognition.start({ language: 'my-MM', maxResults: 1, prompt: 'မြန်မာလို ပြောပါ', partialResults: false, popup: true });
-      const transcript = result.matches?.[0]?.trim();
-      if (transcript) { input.value = transcript; input.focus(); }
+      const available=await SpeechRecognition.available();
+      if(!available.available)throw new Error('ဒီဖုန်းမှာ Speech Recognition မရပါ။ Google Speech Services ကို စစ်ပါ။');
+      const permission=await SpeechRecognition.requestPermissions();
+      if(permission.speechRecognition!=='granted')throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
+      const result=await SpeechRecognition.start({language:'my-MM',maxResults:1,prompt:'မြန်မာလို ပြောပါ',partialResults:false,popup:true});
+      const transcript=result.matches?.[0]?.trim();
+      if(transcript){prompt.value=transcript;resize();view.querySelector<HTMLFormElement>('#chatForm')!.requestSubmit();}
       else alert('အသံကို စာသားအဖြစ် မရရှိပါ။ ဖုန်းတွင် မြန်မာ Speech Recognition ပံ့ပိုးမှုကို စစ်ပါ။');
-    } catch (err) { alert('အသံဖြင့် ရိုက်မရပါ။ ' + (err instanceof Error ? err.message : 'Speech recognition error')); }
-    finally { button.disabled = false; button.textContent = '🎙 အသံဖြင့် ရိုက်ရန်'; }
+    } catch(err){alert('အသံဖြင့် ခိုင်းမရပါ။ '+(err instanceof Error?err.message:'Speech recognition error'));}
+    finally {button.disabled=false;button.classList.remove('listening');}
   });
-  view.querySelector<HTMLFormElement>('#chatForm')!.addEventListener('submit', async e => {
+  view.querySelector<HTMLFormElement>('#chatForm')!.addEventListener('submit',async e=>{
     e.preventDefault();
-    const input = view.querySelector<HTMLTextAreaElement>('#prompt')!;
-    const text = input.value.trim();
-    if (!text || busy) return;
-    messages.push({ role: 'user', content: text }); busy = true; render();
+    const text=input.value.trim();
+    if((!text&&!attachedText)||busy)return;
+    const userText=(text||'ဒီဖိုင်ကို စစ်ဆေးပေးပါ။')+(attachedText?'\n\n'+attachedText:'');
+    attachedText='';
+    messages.push({role:'user',content:userText});persistCurrentChat();busy=true;render();
     try {
-      const actionResult = await tryNativeCommand(text);
-      if (actionResult) {
-        messages.push({ role: 'assistant', content: actionResult });
-        busy = false; render(); return;
-      }
-    } catch (err) {
-      messages.push({ role: 'assistant', content: 'လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။') });
-      busy = false; render(); return;
+      const actionResult=await tryNativeCommand(text);
+      if(actionResult){messages.push({role:'assistant',content:actionResult});busy=false;persistCurrentChat();render();return;}
+    } catch(err) {
+      messages.push({role:'assistant',content:'လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။')});
+      busy=false;persistCurrentChat();render();return;
     }
     await askAI();
   });
@@ -153,10 +203,11 @@ async function askAI() {
       } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
     }
     messages.push({ role: 'assistant', content: answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။' });
+    persistCurrentChat();
   } catch (err) {
     messages.push({ role: 'assistant', content: 'AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။' });
   }
-  busy = false; render();
+  busy = false; persistCurrentChat(); render();
 }
 
 const capabilities = [
@@ -186,7 +237,7 @@ function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
 }
 function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">OWNER AUTHORITY</span><h2>Permission Center</h2></div><span class="pill">REAL PERMISSION TESTS</span></div>
-    <div class="notice"><b>ဖုန်းခွင့်ပြုချက်များ</b><p>ခွင့်ပြုချက်တိုင်းကို Android Settings မှာ ကိုယ်တိုင်ဖွင့်/ပိတ်နိုင်ပါတယ်။ Myk က ခွင့်ပြုချက်မရထားတဲ့ action ကို အောင်မြင်တယ်လို့ မပြပါ။ Notification အကြောင်းအရာများကို ဒီ build က သိမ်းဆည်း/အင်တာနက်သို့ မပို့ပါ။</p></div>
+    <div class="notice"><b>ဖုန်းခွင့်ပြုချက်များ</b><p>ခွင့်ပြုချက်တိုင်းကို Android Settings မှာ ကိုယ်တိုင်ဖွင့်/ပိတ်နိုင်ပါတယ်။ အမရာက ခွင့်ပြုချက်မရထားတဲ့ action ကို အောင်မြင်တယ်လို့ မပြပါ။ Notification အကြောင်းအရာများကို ဒီ build က သိမ်းဆည်း/အင်တာနက်သို့ မပို့ပါ။</p></div>
     <div class="card permission-tools">
       <div class="status-row"><div><b>📍 တည်နေရာ (Location)</b><small id="locationStatus">Permission အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="requestLocation">စမ်းသပ်ရန်</button></div>
       <div class="status-row"><div><b>🎙 မိုက်ခရိုဖုန်း (Microphone)</b><small id="micStatus">ခွင့်ပြုချက် မစမ်းရသေးပါ</small></div><button class="secondary" id="requestMic">စမ်းသပ်ရန်</button></div>
@@ -316,7 +367,7 @@ function renderSettings(view: HTMLElement) {
       <button class="danger wide" id="deleteKeys">API Key နှစ်ခုလုံး ဖျက်မယ်</button>
     </div>
     <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
-    <div class="card"><div class="card-title">About Myk Guardian</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
+    <div class="card"><div class="card-title">About AMARA AI</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
   view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
