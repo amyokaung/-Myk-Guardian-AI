@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "cap:sync": "cap sync android",
-    "cap:android": "cap open android"
+    "cap:android": "cap open android",
+    "android:setup": "node scripts/setup-android.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",
