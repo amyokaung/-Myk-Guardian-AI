@@ -2,7 +2,7 @@ name: Build Myk Guardian AI APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, feat/native-accessibility-capacitor, feat/vedari-voice-id-wake-service]
+    branches: [main, feat/native-accessibility-capacitor, feat/vedari-voice-id-wake-service, feat/personal-memory-import]
     paths:
       - 'src/**'
       - 'native/**'
@@ -14,7 +14,7 @@ on:
       - 'capacitor.config.ts'
       - '.github/workflows/android.yml'
   pull_request:
-    branches: [main]
+    branches: [main, feat/personal-life-scanner]
     paths:
       - 'src/**'
       - 'native/**'
