@@ -259,7 +259,7 @@ export function initBrainScreen(view: HTMLElement): void {
     <div class="card">
       <div class="card-title">📥 Memory ဖိုင် ထည့်ရန်</div>
       <p class="muted">myk_personal_memory.md / .json အပါအဝင် Markdown, JSON, TXT, HTML ကို ထည့်နိုင်ပါတယ်။ Gemini ZIP ကို Settings ထဲက Import လုပ်ဆောင်ချက်နဲ့ ပေါင်းစည်းပြီးနောက် ထုတ်ထားတဲ့ဖိုင်ကို ဒီမှာထည့်ပါ။</p>
-      <input id="brainFile" type="file" accept=".md,.json,.txt,.html,.htm">
+      <input id="brainFile" type="file" accept=".md,.json,.txt,.html,.htm" multiple><p class="muted">ဖိုင် ၃ ဖိုင်လုံးကို တစ်ခါတည်းရွေးနိုင်ပါတယ်။ JSON / TXT / MD ဖိုင်တွေကို ဖုန်းထဲမှာပဲ ဖတ်ပြီး သက်ဆိုင်ရာမှတ်ဉာဏ်အဖြစ် သိမ်းပါမယ်။</p>
       <button class="primary wide" id="brainImport">Brain ထဲ ပေါင်းထည့်မယ်</button>
       <p class="muted" id="brainImportStatus" aria-live="polite">ဖိုင်မရွေးရသေးပါ။</p>
     </div>
@@ -324,12 +324,23 @@ export function initBrainScreen(view: HTMLElement): void {
     catch (err) { editStatus.textContent='သိမ်းမရပါ: ' + (err instanceof Error ? err.message : 'storage error'); }
   });
   view.querySelector<HTMLButtonElement>('#brainImport')!.addEventListener('click', async () => {
-    const selected = file.files?.[0]; if (!selected) { status.textContent='အရင် Memory ဖိုင်ကို ရွေးပါ။'; return; }
+    const selected = Array.from(file.files || []);
+    if (!selected.length) { status.textContent='Memory ဖိုင် ၁ ဖိုင် သို့မဟုတ် အများအပြားကို ရွေးပါ။'; return; }
     const button = view.querySelector<HTMLButtonElement>('#brainImport')!;
-    button.disabled=true; status.textContent='ဖိုင်ကို ဖုန်းထဲမှာ ဖတ်ပြီး Brain ထဲ ပေါင်းထည့်နေပါတယ်…';
-    try { const result = await importBrainFile(selected); status.textContent='ပြီးပါပြီ။ အသစ်ထည့်ထားသော မှတ်တမ်း ' + result.added + ' ခု · ထပ်နေ၍ ကျော်ထားသော မှတ်တမ်း ' + result.skipped + ' ခု။'; file.value=''; await refresh(); }
-    catch (err) { status.textContent='Import မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error'); }
-    finally { button.disabled=false; }
+    button.disabled=true; status.textContent='ရွေးထားသော ဖိုင်တွေကို ဖုန်းထဲမှာ ဖတ်ပြီး Brain ထဲ ပေါင်းထည့်နေပါတယ်…';
+    let added=0, skipped=0; const reports:string[]=[];
+    try {
+      for (const item of selected) {
+        const result = await importBrainFile(item);
+        added += result.added; skipped += result.skipped;
+        reports.push(item.name + ': +' + result.added + ' / ထပ်နေ၍ကျော် ' + result.skipped);
+      }
+      status.textContent='အောင်မြင်ပါပြီ။ ဖိုင် ' + selected.length + ' ခု · အသစ်မှတ်ဉာဏ် ' + added + ' ခု · ထပ်နေ၍ကျော် ' + skipped + ' ခု။ ' + reports.join(' | ');
+      file.value=''; await refresh();
+    } catch (err) {
+      status.textContent='Import မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error') + '။ ယခင်ဖိုင်များအောင်မြင်စွာသိမ်းပြီးပါက ၎င်းတို့ကို မဖျက်ပါ။';
+      await refresh();
+    } finally { button.disabled=false; }
   });
   void refresh();
 }
