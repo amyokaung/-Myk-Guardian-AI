@@ -122,7 +122,12 @@ function render() {
   app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>activeTab==='chat'?setDrawer(true):navigateTab('chat'));
   const view=document.querySelector<HTMLElement>('#view')!;
   if(activeTab==='chat') renderChat(view);
-  if(activeTab==='brain') initBrainScreen(view);
+  if(activeTab==='brain') {
+    initBrainScreen(view);
+    const backupLocation = localStorage.getItem('myk.brain.backup.location') || 'ပထမဆုံး Chat အောင်မြင်ပြီးနောက် JSON ဖိုင်ကို အလိုအလျောက် ဖန်တီးပါမယ်။';
+    const backupTime = localStorage.getItem('myk.brain.backup.updatedAt');
+    view.insertAdjacentHTML('afterbegin', '<div class="notice brain-backup-notice"><b>🔒 Auto Memory JSON Backup</b><p>ဖိုင်ကို App ရဲ့ private storage ထဲမှာ အလိုအလျောက်သိမ်းပြီး App update လုပ်ပြီးနောက် ပြန်ဖတ်ပါမယ်။ App ကို uninstall လုပ်ခြင်း သို့မဟုတ် App data ရှင်းခြင်းလုပ်ပါက ဒီဖိုင်ပါ ပျောက်နိုင်ပါတယ်။</p><p><b>ဖိုင်လမ်းကြောင်း:</b><br><code>' + esc(backupLocation) + '</code></p><p>နောက်ဆုံးသိမ်းချိန်: ' + esc(backupTime ? new Date(backupTime).toLocaleString() : 'မသိမ်းရသေးပါ') + '</p></div>');
+  }
   if(activeTab==='agent') renderAgent(view,perms);
   if(activeTab==='permissions') renderPermissions(view,perms);
   if(activeTab==='settings') renderSettings(view);
