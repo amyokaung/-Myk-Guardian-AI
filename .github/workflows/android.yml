@@ -1,4 +1,4 @@
-name: Build Myk Guardian AI APK
+name: Build AMARA AI APK
 on:
   workflow_dispatch:
   push:
