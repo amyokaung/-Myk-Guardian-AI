@@ -1,4 +1,5 @@
 import './style.css';
+import { AMARA_SYSTEM_PROMPT } from './amara-persona';
 import { registerPlugin } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
@@ -19,7 +20,7 @@ const readPerms = (): Record<string, boolean> => {
 };
 const esc = (s: string) => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 let messages: Message[] = [
-  { role: 'assistant', content: 'မင်္ဂလာပါ။ ကျွန်တော် Myk Guardian AI ပါ။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
+  { role: 'assistant', content: 'မင်္ဂလာပါ။ အမရာပါ။ 😊 မင်းဘာလိုအပ်လဲ ပြောလိုက်နော်။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
 let busy = false;
@@ -30,7 +31,7 @@ function render() {
     <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
     <header class="topbar">
       <div class="brandmark">M<span>✦</span></div>
-      <div class="brand"><b>MYK <span>GUARDIAN</span></b><small>PERSONAL INTELLIGENCE SYSTEM</small></div>
+      <div class="brand"><b>AMARA <span>AI</span></b><small>PERSONAL AI COMPANION</small></div>
       <button class="iconbtn" id="settingsShortcut" aria-label="Settings">⚙</button>
     </header>
     <main>
@@ -38,7 +39,7 @@ function render() {
         <div class="eyebrow"><i></i> SYSTEM READY · USER CONTROLLED</div>
         <h1>Your world.<br><span>Your command.</span></h1>
         <p>ကိုယ်ပိုင် AI လက်ထောက် · မင်းထိန်းချုပ်မှုအောက်မှာ</p>
-        <div class="orb-wrap"><div class="orb"><div class="orb-core">M</div></div><div class="orb-label">MYK CORE <span>● STANDBY</span></div></div>
+        <div class="orb-wrap"><div class="orb"><div class="orb-core">A</div></div><div class="orb-label">AMARA CORE <span>● STANDBY</span></div></div>
       </section>
       <nav class="tabs">
         <button data-tab="chat" class="${activeTab==='chat'?'active':''}">◈ စကားပြော</button>
@@ -48,7 +49,7 @@ function render() {
       </nav>
       <section id="view"></section>
     </main>
-    <footer><span>MYK GUARDIAN AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
+    <footer><span>AMARA AI</span><span>PRIVACY BY DESIGN · BUILD 0.1.0</span></footer>`;
   app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b => b.addEventListener('click', () => {
     activeTab = b.dataset.tab!;
     render();
@@ -64,8 +65,8 @@ function render() {
 function renderChat(view: HTMLElement) {
   view.innerHTML = `
     <div class="section-head"><div><span class="eyebrow">NEURAL INTERFACE</span><h2>AI စကားဝိုင်း</h2></div><span class="pill"><i></i> ${busy?'PROCESSING':'READY'}</span></div>
-    <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'MYK AI'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
-    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="Myk ကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
+    <div class="chatbox"><div class="messages">${messages.map(m => `<article class="message ${m.role}"><div class="msg-label">${m.role==='user'?'YOU':'AMARA'}</div><div>${esc(m.content).replace(/\n/g,'<br>')}</div></article>`).join('')}${busy?'<article class="message assistant"><div class="msg-label">MYK AI</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':''}</div></div>
+    <div class="voice-actions"><button class="secondary" id="voiceInput" type="button">🎙 အသံဖြင့် ရိုက်ရန်</button></div><form id="chatForm" class="composer"><textarea id="prompt" rows="2" placeholder="အမရာကို မြန်မာလို အမိန့်ပေးပါ…" required ${busy?'disabled':''}></textarea><button class="send" type="submit" ${busy?'disabled':''}>➤</button></form>
     <p class="hint">App ဖွင့်ခြင်း၊ လက်ရှိသီချင်းကျော်ခြင်းနှင့် Back Action တို့ကို ပံ့ပိုးထားသလို လုပ်ဆောင်မည်။ Android ခွင့်ပြုချက်နှင့် လက်ရှိ App ပံ့ပိုးမှုအပေါ် မူတည်နိုင်သည်။</p>`;
   view.querySelector<HTMLButtonElement>('#voiceInput')!.addEventListener('click', async () => {
     const button = view.querySelector<HTMLButtonElement>('#voiceInput')!;
@@ -111,7 +112,7 @@ const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', descripti
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
   const history = messages.slice(-20);
-  const systemPrompt = 'You are Myk Guardian AI, a careful Burmese-first Android personal assistant. Understand natural Burmese and English commands. If the user requests a phone action that matches an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
+  const systemPrompt = 'You are AMARA AI, a careful Burmese-first Android personal assistant. Understand natural Burmese and English commands. If the user requests a phone action that matches an available phone_action tool, call it instead of merely explaining. Never claim success until the app reports success. Only use the listed actions. For sensitive or destructive actions not available as tools, explain the limitation and ask for confirmation.';
   try {
     let answer = '';
     if (provider === 'gemini') {
@@ -136,7 +137,7 @@ async function askAI() {
       const key = localStorage.getItem(KEY_NAME)?.trim();
       if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
       const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'AMARA AI AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
       const message = data?.choices?.[0]?.message;
