@@ -171,6 +171,53 @@ export async function importBrainFile(file: File): Promise<{ added: number; skip
   await putBrainItems(toAdd);
   return { added, skipped };
 }
+export async function exportBrainMemoryJson(): Promise<string> {
+  const memories = await getBrainItems();
+  return JSON.stringify({ format: 'myk-personal-memory', version: 1, updatedAt: new Date().toISOString(), memories }, null, 2);
+}
+
+export async function restoreBrainMemoryJson(raw: string): Promise<{ added: number; skipped: number }> {
+  let parsed: any;
+  try { parsed = JSON.parse(raw); } catch { throw new Error('Brain JSON ဖိုင် ပျက်စီးနေပါတယ်။'); }
+  const rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.memories) ? parsed.memories : [];
+  if (!rows.length && parsed?.format !== 'myk-personal-memory') throw new Error('Brain JSON ဖိုင်ထဲမှာ memories စာရင်း မတွေ့ပါ။');
+  const existing = await getBrainItems();
+  const byId = new Map(existing.map(item => [item.id, item]));
+  const signatures = new Set(existing.map(x => (x.title + '|' + x.content).toLocaleLowerCase().replace(/\s+/g, ' ').trim()));
+  const toAdd: BrainItem[] = [];
+  let skipped = 0;
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || typeof row.content !== 'string' || !row.content.trim()) { skipped++; continue; }
+    const title = String(row.title || 'မှတ်ဉာဏ်');
+    const content = cleanText(row.content);
+    const signature = (title + '|' + content).toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+    if (signatures.has(signature) || (typeof row.id === 'string' && byId.has(row.id))) { skipped++; continue; }
+    const now = new Date().toISOString();
+    const item: BrainItem = {
+      id: typeof row.id === 'string' && row.id ? row.id : ('brain-' + Date.now() + '-' + Math.random().toString(36).slice(2)),
+      title: title.slice(0, 220), content, source: String(row.source || 'JSON backup'),
+      createdAt: String(row.createdAt || now), updatedAt: String(row.updatedAt || now)
+    };
+    signatures.add(signature); byId.set(item.id, item); toAdd.push(item);
+  }
+  await putBrainItems(toAdd);
+  return { added: toAdd.length, skipped };
+}
+
+export async function addChatTurnMemory(chatId: string, turnNumber: number, userText: string, assistantText: string): Promise<void> {
+  const user = cleanText(userText).slice(0, 6000);
+  const assistant = cleanText(assistantText).slice(0, 6000);
+  if (!user || !assistant) return;
+  const now = new Date().toISOString();
+  const item: BrainItem = {
+    id: 'auto-chat-' + chatId.replace(/[^a-zA-Z0-9_-]/g, '_') + '-' + turnNumber,
+    title: 'စကားပြောမှတ်တမ်း · ' + user.slice(0, 100),
+    content: 'အသုံးပြုသူ: ' + user + '\nMyk: ' + assistant,
+    source: 'auto-chat', createdAt: now, updatedAt: now
+  };
+  await putBrainItem(item);
+}
+
 function queryTerms(query: string): string[] {
   const normalized = query.toLocaleLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ');
   const terms = new Set(normalized.split(/\s+/).filter(x => x.length >= 2));
