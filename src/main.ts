@@ -503,7 +503,7 @@ function renderSettings(view: HTMLElement) {
     if (n === 0) return 'အခမဲ့';
     return '$' + (n * 1_000_000).toLocaleString('en-US', {maximumFractionDigits: 4});
   };
-  const modelLabel = (m: {id:string;name:string;prompt:string;completion:string}) =>
+  const modelLabel = (m: {id:string;name:string;prompt:string;completion:string;supportsTools:boolean}) =>
     `${m.name} · ${m.id} · In ${moneyPerMillion(m.prompt)} / Out ${moneyPerMillion(m.completion)} per 1M tokens${m.supportsTools ? ' · Phone actions' : ' · Text chat'}`;
   const renderModelOptions = () => {
     const q = modelSearch.value.trim().toLowerCase();
