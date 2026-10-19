@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.myk.guardianai',
-  appName: 'Myk Guardian AI',
+  appName: 'AMARA AI',
   webDir: 'dist',
   bundledWebRuntime: false,
   plugins: {
