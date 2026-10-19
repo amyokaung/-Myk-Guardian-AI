@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">Allows AMARA AI to perform user-requested Back and Home actions and click visible controls by text. Screen content is inspected only while the service is enabled.</string>
+</resources>
