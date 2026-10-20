@@ -112,20 +112,35 @@ async function saveBrainFile(file:File,progress:(p:number)=>void):Promise<void>{
  d.close();progress(1);
 }
 async function brainContext(query:string):Promise<string>{
- const terms=(query.toLocaleLowerCase().match(/[a-z0-9_]{3,}|[\u1000-\u109f]{2,}/g)||[]).filter((x,i,a)=>a.indexOf(x)===i).slice(0,24);
- if(!terms.length)return'';
+ const q=query.toLocaleLowerCase().normalize('NFC');
+ const raw=(q.match(/[a-z0-9_]{3,}|[\\u1000-\\u109f]+/g)||[]);
+ const terms:string[]=[];
+ for(const part of raw){
+  if(/[\\u1000-\\u109f]/.test(part)){
+   for(let n=2;n<=Math.min(5,part.length);n++)for(let i=0;i+n<=part.length;i++)terms.push(part.slice(i,i+n));
+  }else terms.push(part);
+ }
+ const unique=terms.filter((x,i,a)=>a.indexOf(x)===i).slice(0,100);
+ if(!unique.length)return'';
  const d=await brainDB();
  return new Promise((resolve,reject)=>{
   const tx=d.transaction(['chunks','files'],'readonly'),req=tx.objectStore('chunks').openCursor();
-  const scores:Array<{score:number;text:string;name:string}>=[];let count=0;
-  req.onsuccess=()=>{const cur=req.result;if(!cur)return;
+  const scores:Array<{score:number;text:string;name:string}>=[];let chunksScanned=0;
+  req.onsuccess=()=>{
+   const cur=req.result;if(!cur)return;
    const row=cur.value as {fileId:string;text:string;fileName:string};
-   const lower=row.text.toLocaleLowerCase().normalize('NFC');let score=0;for(const term of unique){if(lower.includes(term))score+=term.length>=4?2:1;}
-   if(score>0){scores.push({score,text:row.text,name:row.fileName});scores.sort((a,b)=>b.score-a.score);if(scores.length>12)scores.pop();}
-   count++;cur.continue();
+   const lower=String(row.text||'').toLocaleLowerCase().normalize('NFC');let score=0;
+   for(const term of unique)if(lower.includes(term))score+=term.length>=4?2:1;
+   if(score>0){scores.push({score,text:row.text,name:row.fileName||'မှတ်ဉာဏ်ဖိုင်'});scores.sort((a,b)=>b.score-a.score);if(scores.length>12)scores.pop();}
+   chunksScanned++;cur.continue();
   };
   req.onerror=()=>{d.close();reject(req.error);};
-  tx.oncomplete=()=>{d.close();const picked=scores.slice(0,6);const content=picked.map(x=>'[မှတ်ဉာဏ်ဖိုင်: '+x.name+']\n'+x.text).join('\n\n').slice(0,9000);resolve(content?'\n\nအသုံးပြုသူတင်သွင်းထားသော Brain Memory (သက်ဆိုင်ရာစာသားအပိုင်းများ၊ အချက်အလက်မတွေ့ပါက မခန့်မှန်းပါနှင့်):\n'+content:'');};
+  tx.oncomplete=()=>{
+   d.close();
+   const picked=scores.slice(0,7);
+   const content=picked.map(x=>'[Brain ဖိုင်: '+x.name+' | ဆက်စပ်မှု '+x.score+']\\n'+x.text).join('\\n\\n').slice(0,12000);
+   resolve(content?'\\n\\n[AMARA BRAIN MEMORY — အောက်ပါစာသားသည် အသုံးပြုသူတင်ထားသောဖိုင်များမှ ရှာတွေ့ထားခြင်းဖြစ်သည်။ ၎င်းကို အခြေခံပြီး တိုက်ရိုက်ဖြေပါ။ မေးခွန်းနှင့်မသက်ဆိုင်ပါက မသိကြောင်းပြောပါ။]\\n'+content:'\\n\\n[AMARA BRAIN MEMORY: လက်ရှိမေးခွန်းနှင့် ကိုက်ညီသောဖိုင်စာသားကို မတွေ့ပါ။ မှတ်ဉာဏ်ထဲရှိသည်ဟု မခန့်မှန်းပါနှင့်။]');
+  };
   tx.onerror=()=>{d.close();reject(tx.error);};
  });
 }
