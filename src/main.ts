@@ -23,6 +23,7 @@ let messages: Message[] = [
   { role: 'assistant', content: 'မင်္ဂလာပါ။ အမရာပါ။ 😊 မင်းဘာလိုအပ်လဲ ပြောလိုက်နော်။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
+let previousTab = 'chat';
 let busy = false;
 type SavedChat = { id: string; title: string; updatedAt: number; messages: Message[] };
 const CHAT_STORE = 'amara.chat.history.v1';
@@ -88,8 +89,8 @@ function render() {
   historyList.innerHTML=savedChats.slice().sort((a,b)=>b.updatedAt-a.updatedAt).map(c=>'<div class="history-row"><button class="history-item '+(c.id===activeChatId?'current':'')+'" data-chat-id="'+esc(c.id)+'"><span>◷</span><span class="history-title">'+esc(c.title||'New chat')+'</span></button><button class="history-delete" data-delete-chat="'+esc(c.id)+'" aria-label="Delete chat">×</button></div>').join('')||'<div class="history-empty">စကားဝိုင်းဟောင်း မရှိသေးပါ</div>';
   historyList.querySelectorAll<HTMLButtonElement>('[data-chat-id]').forEach(b=>b.addEventListener('click',()=>{const c=savedChats.find(x=>x.id===b.dataset.chatId);if(c){activeChatId=c.id;messages=c.messages.map(m=>({...m}));activeTab='chat';setDrawer(false);render();}}));
   historyList.querySelectorAll<HTMLButtonElement>('[data-delete-chat]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=(e.currentTarget as HTMLButtonElement).dataset.deleteChat!;savedChats=savedChats.filter(c=>c.id!==id);try{localStorage.setItem(CHAT_STORE,JSON.stringify(savedChats));}catch{}if(id===activeChatId){activeChatId='chat-'+Date.now();messages=[{role:'assistant',content:'မင်္ဂလာပါ။ အမရာပါ။ 😊 ဘာကူညီပေးရမလဲ။'}];}render();}));
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);activeTab=b.dataset.tab!;render();}));
-  app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>{if(activeTab==='chat')startNewChat();else{activeTab='chat';render();}});
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);const nextTab=b.dataset.tab!;if(nextTab!==activeTab)previousTab=activeTab;activeTab=nextTab;render();}));
+  app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>{if(activeTab==='chat')startNewChat();else{previousTab=activeTab;activeTab='chat';render();}});
   const view=app.querySelector<HTMLElement>('#view')!;
   if(activeTab==='chat') renderChat(view);
   else if(activeTab==='brain') renderBrain(view);
@@ -101,7 +102,7 @@ function render() {
 function renderBrain(view: HTMLElement) {
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">AMARA BRAIN</span><h2>ကိုယ်ပိုင်မှတ်ဉာဏ်</h2></div><span class="pill">NEXT STAGE</span></div>
     <div class="card brain-placeholder"><div class="brain-placeholder-icon">🧠</div><h3>AMARA Brain</h3><p class="muted">ကိုယ်ပိုင်မှတ်ဉာဏ် စနစ်ကို နောက်အဆင့်မှာ သေချာစွာ ထည့်သွင်းမယ်။ ဒီအချိန်မှာ မှတ်ဉာဏ်အချက်အလက်တွေကို အလိုအလျောက် စုဆောင်းတာ မလုပ်သေးပါဘူး။</p><button class="primary wide" id="brainBackToChat">Chat ကို ပြန်သွားမယ်</button></div>`;
-  view.querySelector('#brainBackToChat')?.addEventListener('click',()=>{activeTab='chat';render();});
+  view.querySelector('#brainBackToChat')?.addEventListener('click',()=>{previousTab=activeTab;activeTab='chat';render();});
 }
 function renderChat(view: HTMLElement) {
   view.innerHTML = '<section class="chat-screen"><div class="chat-title-row"><div><span class="eyebrow">AMARA · PERSONAL CHAT</span><h2>အမရာနဲ့ စကားပြောမယ်</h2></div><span class="pill"><i></i> '+(busy?'THINKING':'READY')+'</span></div><div class="chat-transcript" id="chatTranscript"><div class="messages" id="messageList"></div></div><div class="composer-wrap"><div id="pendingFiles" class="pending-files"></div><form id="chatForm" class="composer chatgpt-composer"><button class="composer-icon plus-button" id="attachToggle" type="button" aria-label="Attach image or file">＋</button><textarea id="prompt" rows="1" placeholder="အမရာကို မေးပါ…" aria-label="Message AMARA" '+(busy?'disabled':'')+'></textarea><input id="imagePicker" type="file" accept="image/*" multiple hidden><input id="filePicker" type="file" accept=".txt,.md,.json,.csv,.html,.xml,.pdf,.log,text/*,application/json,application/pdf" multiple hidden><button class="composer-icon mic-button" id="voiceInput" type="button" aria-label="Voice input"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"></path></svg></button><button class="composer-icon send" type="submit" aria-label="Send message" '+(busy?'disabled':'')+'>↑</button></form><div class="composer-hint">အမရာ၏ အဖြေတွင် အမှားပါနိုင်သည်။ အရေးကြီးသောအချက်အလက်များကို စစ်ဆေးပါ။</div></div></section><div class="attach-popover" id="attachPopover" hidden><button type="button" id="chooseImages"><span>▧</span> ပုံရွေးရန်</button><button type="button" id="chooseFiles"><span>↥</span> ဖိုင်ရွေးရန်</button></div>';
@@ -252,10 +253,17 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   const requestLocation = view.querySelector<HTMLButtonElement>('#requestLocation')!;
   const showLocationPermission = async () => {
     try {
-      const status = await Geolocation.checkPermissions();
-      locationStatus.textContent = `Location permission: ${status.location}`;
+      const [nativeStatus, geoStatus] = await Promise.all([
+        MykNative.getStatus(),
+        Geolocation.checkPermissions().catch(() => null)
+      ]);
+      const osGranted = nativeStatus.locationGranted === true;
+      const runtimeState = geoStatus?.location;
+      locationStatus.textContent = osGranted
+        ? (runtimeState === 'granted' ? 'ခွင့်ပြုထားသည် — Android permission စစ်ဆေးပြီး' : 'Android permission ရရှိထားသည် — Location plugin status ကို ထပ်စစ်နေသည်')
+        : 'Android Location permission မရသေးပါ။ Settings > Apps > AMARA AI > Permissions မှ Allow လုပ်ပါ။';
     } catch {
-      locationStatus.textContent = 'Permission အခြေအနေကို စစ်မရပါ။ Android app permissions ကို စစ်ပါ။';
+      locationStatus.textContent = 'Native permission status မရပါ။ နောက်ဆုံး APK နှင့် AndroidManifest ကို စစ်ပါ။';
     }
   };
   void showLocationPermission();
@@ -307,6 +315,9 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     }
   };
   void refreshNativeStatus();
+  const refreshOnReturn = () => { if (!document.hidden) void refreshNativeStatus(); };
+  window.addEventListener('focus', refreshOnReturn);
+  document.addEventListener('visibilitychange', refreshOnReturn);
   view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
     try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ AMARA AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
     catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
@@ -315,29 +326,13 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     try { await MykNative.openNotificationSettings(); alert('Notification Access စာမျက်နှာမှာ AMARA AI ကို ဖွင့်ပေးပါ။'); }
     catch (err) { alert('Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
-  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
-    if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
-    try {
-      const status = await MykNative.getStatus();
-      if (!status.accessibilityEnabled) {
-        alert('စစ်ဆေးချက်: Accessibility Service ပိတ်ထားသည်။\\n\\nAndroid Settings > Accessibility > AMARA AI ကို On လုပ်ပါ။');
-        return;
-      }
-      const result = await MykNative.performAction({ action: 'back' });
-      // Do not open a blocking alert immediately: it can block the native
-      // delayed fallback on Android's main thread.
-      window.setTimeout(() => {
-        alert(
-          'Back Action စစ်ဆေးချက်\\n\\n' +
-          'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
-          'Notification Access: ' + status.notificationEnabled + '\\n' +
-          'Native Back Result: ' + result.success + '\\n' +
-          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
-          'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
-        );
-      }, 800);
-  
-    } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
+  view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', () => {
+    // Permission Center's Back Action is app navigation, not Android GLOBAL_ACTION_BACK.
+    // Returning to the previous AMARA tab prevents the app from being sent to background.
+    const destination = previousTab && previousTab !== activeTab ? previousTab : 'chat';
+    previousTab = activeTab;
+    activeTab = destination;
+    render();
   });
   const picker = view.querySelector<HTMLInputElement>('#filePicker')!;
   view.querySelector<HTMLButtonElement>('#chooseFile')!.addEventListener('click', () => picker.click());
