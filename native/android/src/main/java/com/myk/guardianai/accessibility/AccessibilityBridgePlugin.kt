@@ -521,15 +521,21 @@ class AccessibilityBridgePlugin : Plugin() {
      */
     private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
         val hostActivity = activity
+        // The Back request originates inside AMARA. Move the task behind the
+        // previously used app first, then dispatch the Android global Back action.
+        // Use a longer delay so Android has time to make the previous app active.
         Handler(Looper.getMainLooper()).post {
-            if (!hostActivity.isFinishing && !hostActivity.isDestroyed) {
-                hostActivity.moveTaskToBack(true)
-                Handler(Looper.getMainLooper()).postDelayed({
-                    MyAccessibilityService.instance()?.back()
-                }, 250L)
-            } else {
-                service.back()
+            if (hostActivity == null || hostActivity.isFinishing || hostActivity.isDestroyed) {
+                if (!service.back()) android.util.Log.w("AMARA-Back", "GLOBAL_ACTION_BACK was rejected")
+                return@post
             }
+            hostActivity.moveTaskToBack(true)
+            Handler(Looper.getMainLooper()).postDelayed({
+                val activeService = MyAccessibilityService.instance()
+                if (activeService == null || !activeService.back()) {
+                    android.util.Log.e("AMARA-Back", "Accessibility service unavailable or GLOBAL_ACTION_BACK rejected")
+                }
+            }, 450L)
         }
         return true
     }
