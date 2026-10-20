@@ -166,10 +166,34 @@ async function askAI() {
     const key = localStorage.getItem(KEY_NAME)?.trim();
     if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
     const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: aiMessages, tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
+    let modelCapabilities: Record<string, boolean> = {};
+    try { modelCapabilities = JSON.parse(localStorage.getItem('myk.openrouter.model.capabilities') || '{}'); } catch { modelCapabilities = {}; }
+    // Tool/function calling is not supported by every OpenRouter model. Do not send
+    // tools/tool_choice to models whose metadata says they cannot use them.
+    const supportsTools = typeof modelCapabilities[model] === 'boolean'
+      ? modelCapabilities[model]
+      : /^(openai\/|deepseek\/)/i.test(model);
+    const requestBody: Record<string, unknown> = {
+      model, messages: aiMessages, temperature: 0.4, max_tokens: 900
+    };
+    if (supportsTools) {
+      requestBody.tools = OPENROUTER_TOOLS;
+      requestBody.tool_choice = 'auto';
+    }
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' },
+      body: JSON.stringify(requestBody)
+    });
+    const data = await response.json().catch(() => ({} as any));
+    const apiError = data?.error || data?.choices?.[0]?.error;
+    if (!response.ok || apiError) {
+      const details = [apiError?.message, apiError?.metadata?.error_type, apiError?.metadata?.provider_code]
+        .filter(Boolean).join(' · ');
+      throw new Error(details || 'OpenRouter HTTP ' + response.status);
+    }
     const message = data?.choices?.[0]?.message;
+    if (!message) throw new Error('OpenRouter က message မပြန်ပေးပါ။ Model ID, provider availability နဲ့ credit ကို စစ်ပါ။');
     const call = message?.tool_calls?.find((t: any) => t.function?.name === 'phone_action');
     if (call) {
       let args: Record<string, unknown> = {};
@@ -179,8 +203,12 @@ async function askAI() {
         answer = result;
       } else {
         const follow = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'Myk Guardian AI' }, body: JSON.stringify({ model, messages: [...aiMessages, { role: 'assistant', content: null, tool_calls: [call] }, { role: 'tool', tool_call_id: call.id, content: result }], temperature: 0.4, max_tokens: 500 }) });
-        const followData = await follow.json();
-        if (!follow.ok) throw new Error(followData?.error?.message || 'AI action result error');
+        const followData = await follow.json().catch(() => ({} as any));
+        const followError = followData?.error || followData?.choices?.[0]?.error;
+        if (!follow.ok || followError) {
+          const details = [followError?.message, followError?.metadata?.error_type, followError?.metadata?.provider_code].filter(Boolean).join(' · ');
+          throw new Error(details || 'AI action result HTTP ' + follow.status);
+        }
         answer = followData?.choices?.[0]?.message?.content?.trim() || result;
       }
     } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
@@ -468,15 +496,15 @@ function renderSettings(view: HTMLElement) {
   const modelSearch = view.querySelector<HTMLInputElement>('#modelSearch')!;
   const modelPriceInfo = view.querySelector<HTMLElement>('#modelPriceInfo')!;
   const modelStatus = view.querySelector<HTMLElement>('#modelStatus')!;
-  let availableModels: Array<{id:string; name:string; prompt:string; completion:string; context:number}> = [];
+  let availableModels: Array<{id:string; name:string; prompt:string; completion:string; context:number; supportsTools:boolean}> = [];
   const moneyPerMillion = (price: string) => {
     const n = Number(price);
     if (!Number.isFinite(n)) return 'ဈေးနှုန်းမသိ';
     if (n === 0) return 'အခမဲ့';
     return '$' + (n * 1_000_000).toLocaleString('en-US', {maximumFractionDigits: 4});
   };
-  const modelLabel = (m: {id:string;name:string;prompt:string;completion:string}) =>
-    `${m.name} · ${m.id} · In ${moneyPerMillion(m.prompt)} / Out ${moneyPerMillion(m.completion)} per 1M tokens`;
+  const modelLabel = (m: {id:string;name:string;prompt:string;completion:string;supportsTools:boolean}) =>
+    `${m.name} · ${m.id} · In ${moneyPerMillion(m.prompt)} / Out ${moneyPerMillion(m.completion)} per 1M tokens${m.supportsTools ? ' · Phone actions' : ' · Text chat'}`;
   const renderModelOptions = () => {
     const q = modelSearch.value.trim().toLowerCase();
     const filtered = availableModels.filter(m => !q || (m.id + ' ' + m.name).toLowerCase().includes(q));
@@ -517,14 +545,17 @@ function renderSettings(view: HTMLElement) {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
       availableModels = (Array.isArray(data?.data) ? data.data : [])
-        .filter((m: any) => typeof m?.id === 'string' && m?.pricing && (!Array.isArray(m.supported_parameters) || m.supported_parameters.includes('tools')))
+        .filter((m: any) => typeof m?.id === 'string' && m?.pricing)
         .map((m: any) => ({
           id: String(m.id), name: String(m.name || m.id),
           prompt: String(m.pricing.prompt ?? '0'), completion: String(m.pricing.completion ?? '0'),
-          context: Number(m.context_length || 0)
+          context: Number(m.context_length || 0),
+          supportsTools: Array.isArray(m.supported_parameters) && m.supported_parameters.includes('tools')
         }))
         .sort((x: {prompt:string;completion:string}, y: {prompt:string;completion:string}) => (Number(x.prompt) + Number(x.completion)) - (Number(y.prompt) + Number(y.completion)));
       if (!availableModels.length) throw new Error('ဈေးနှုန်းပါသော Model စာရင်း မရရှိပါ။');
+      const capabilities = Object.fromEntries(availableModels.map(m => [m.id, m.supportsTools]));
+      localStorage.setItem('myk.openrouter.model.capabilities', JSON.stringify(capabilities));
       renderModelOptions();
       modelStatus.textContent = `Model ${availableModels.length} ခု ရရှိပါပြီ။ စျေးနှုန်းနဲ့ ကိုက်ညီတာကို ရွေးပါ။`;
     } catch (err) {
@@ -536,7 +567,16 @@ function renderSettings(view: HTMLElement) {
     const selectedModel = modelSelect.value.trim();
     if (apiKey && !apiKey.startsWith('sk-or-') && !confirm('OpenRouter Key ပုံစံက sk-or- နဲ့ မစပါ။ ဒီအတိုင်း သိမ်းမလား?')) return;
     if (apiKey) localStorage.setItem(KEY_NAME, apiKey); else localStorage.removeItem(KEY_NAME);
-    localStorage.setItem(MODEL_NAME, selectedModel || DEFAULT_MODEL);
+    const finalModel = selectedModel || DEFAULT_MODEL;
+    localStorage.setItem(MODEL_NAME, finalModel);
+    const modelMeta = availableModels.find(m => m.id === finalModel);
+    if (modelMeta) {
+      try {
+        const capabilities = JSON.parse(localStorage.getItem('myk.openrouter.model.capabilities') || '{}');
+        capabilities[finalModel] = modelMeta.supportsTools;
+        localStorage.setItem('myk.openrouter.model.capabilities', JSON.stringify(capabilities));
+      } catch { /* Keep model selection usable even if metadata storage fails. */ }
+    }
     // Remove legacy Gemini/provider settings so the app has one clear API configuration.
     localStorage.removeItem('myk.ai.provider');
     localStorage.removeItem('myk.gemini.key');
