@@ -309,9 +309,11 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
       const status = await MykNative.getStatus();
       accessibilityStatus.textContent = status.accessibilityEnabled ? (status.serviceConnected ? 'ဖွင့်ထားပြီး Service ချိတ်ဆက်ထားသည်' : 'Settings မှ On ဖြစ်သော်လည်း Service မချိတ်ဆက်သေးပါ — Off/On ပြန်လုပ်ပါ') : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
       notificationStatus.textContent = status.notificationEnabled ? 'ဖွင့်ထားသည် — Notification Access Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+      await showLocationPermission();
     } catch (err) {
       accessibilityStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
       notificationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
+      locationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK နှင့် AndroidManifest ကို စစ်ပါ။';
     }
   };
   void refreshNativeStatus();
