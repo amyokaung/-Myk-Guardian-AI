@@ -66,3 +66,27 @@ body.drawer-open{overflow:hidden}
 .history-delete{border:0;background:transparent;color:#7f8ba1;font-size:17px;padding:6px}.history-empty{padding:10px;color:#68758e;font-family:'Noto Sans Myanmar',sans-serif;font-size:10px}
 .brain-placeholder{text-align:center;padding:28px 18px}.brain-placeholder-icon{font-size:42px}.brain-placeholder h3{margin:12px 0 4px}
 @media(max-width:420px){.chat-transcript{max-height:calc(100dvh - 230px);padding-left:0;padding-right:0}.chatgpt-composer{gap:4px;padding:7px}.composer-icon{width:32px;height:32px;min-width:32px}.chatgpt-composer .send{width:32px;height:32px;min-width:32px}.plus-button{font-size:25px}.chatgpt-composer textarea{font-size:13px}.composer-hint{font-size:8px}}
+
+
+/* AMARA holographic memory brain */
+.brain-stage{display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px;border:1px solid #58eaff2b;border-radius:24px;background:radial-gradient(ellipse at 50% 44%,#15365c99,transparent 58%),linear-gradient(160deg,#0d172b,#080c18);overflow:hidden;box-shadow:inset 0 0 35px #29cfff09}
+.holo-brain{position:relative;isolation:isolate;width:min(100%,330px);height:290px;display:grid;place-items:center;border:0;background:transparent;color:#dffcff;cursor:pointer;touch-action:manipulation}
+.holo-brain-art{position:relative;z-index:2;font-size:112px;line-height:1;filter:drop-shadow(0 0 8px #4ceaff) drop-shadow(0 0 24px #9675ff);animation:brainHover 3.3s ease-in-out infinite}
+.brain-orbit{position:absolute;left:50%;top:49%;width:230px;height:76px;border:1px solid #5beaff8c;border-radius:50%;transform:translate(-50%,-50%) rotate(-18deg);box-shadow:0 0 18px #4ce8ff25}
+.orbit-b{width:255px;height:98px;border-color:#bc79ff75;transform:translate(-50%,-50%) rotate(28deg)}
+.brain-tap{position:absolute;z-index:3;bottom:10px;padding:10px 15px;border:1px solid #69eaff50;border-radius:30px;background:#0b1728eF;color:#b5f9ff;font-family:'Noto Sans Myanmar',sans-serif;font-size:11px;box-shadow:0 0 25px #39dfff17}
+.brain-status{width:100%;padding:12px;border:1px solid #ffffff12;border-radius:13px;background:#090f1caa;color:#aab9d5;text-align:center;font-family:'Noto Sans Myanmar',sans-serif;font-size:11px;line-height:1.8}
+.brain-progress-wrap{width:100%}.brain-progress-label{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;color:#a7b6d1;font-family:'Noto Sans Myanmar',sans-serif;font-size:10px}.brain-progress-label b{color:#a8f8ff}
+.brain-progress{height:7px;border-radius:9px;overflow:hidden;background:#ffffff12}.brain-progress span{display:block;width:0;height:100%;border-radius:9px;background:linear-gradient(90deg,#4be7ff,#9e78ff,#ff72d9);box-shadow:0 0 14px #66eaff88;transition:width .12s linear}
+.holo-brain.processing .holo-brain-art{animation:brainHover .7s ease-in-out infinite,brainFlash .5s ease-in-out infinite alternate}
+.holo-brain.processing .brain-orbit{border-color:#ff7be6;box-shadow:0 0 20px #b66bff88;animation:brainSpin 1.8s linear infinite}
+.brain-stage.brain-complete .holo-brain-art{filter:drop-shadow(0 0 13px #4df5ff) drop-shadow(0 0 30px #b578ff);animation:brainHover 2s ease-in-out infinite}
+.brain-library h3{font-size:14px;margin:0 0 7px}.brain-library>p{margin-top:0}
+.brain-file-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #ffffff0d;min-width:0}
+.brain-file-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border:1px solid #63eaff25;border-radius:11px;background:#172640;color:#81edff;font-size:18px}
+.brain-file-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}.brain-file-copy b{font-size:11px;overflow-wrap:anywhere;color:#e4edff}.brain-file-copy small{font-size:9px;color:#8191b1}
+.brain-check{color:#62f4c5;font-size:17px}
+@keyframes brainHover{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-7px) scale(1.035)}}
+@keyframes brainFlash{from{filter:drop-shadow(0 0 8px #4ceaff)}to{filter:drop-shadow(0 0 24px #ff72df) drop-shadow(0 0 34px #9675ff)}}
+@keyframes brainSpin{to{transform:translate(-50%,-50%) rotate(342deg)}}
+@media(prefers-reduced-motion:reduce){.holo-brain-art,.holo-brain.processing .brain-orbit{animation:none!important}}
