@@ -520,18 +520,10 @@ class AccessibilityBridgePlugin : Plugin() {
      * Back again after the previous app has become foreground.
      */
     private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
-        val hostActivity = activity
-        Handler(Looper.getMainLooper()).post {
-            if (!hostActivity.isFinishing && !hostActivity.isDestroyed) {
-                hostActivity.moveTaskToBack(true)
-                Handler(Looper.getMainLooper()).postDelayed({
-                    MyAccessibilityService.instance()?.back()
-                }, 250L)
-            } else {
-                service.back()
-            }
-        }
-        return true
+        // Native global Back can leave AMARA entirely. Keep this native action
+        // strictly for system-level Back requests; the Permission Center button
+        // now performs in-app navigation in TypeScript.
+        return service.back()
     }
 
     @PluginMethod
