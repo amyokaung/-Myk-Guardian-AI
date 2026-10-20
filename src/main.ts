@@ -111,6 +111,24 @@ async function saveBrainFile(file:File,progress:(p:number)=>void):Promise<void>{
  if(isText&&file.size){const reader=file.stream().getReader(),decoder=new TextDecoder();let buf='',idx=0,read=0;try{while(true){const x=await reader.read();if(x.done)break;buf+=decoder.decode(x.value,{stream:true});read+=x.value.byteLength;while(buf.length>=65536){const chunk=buf.slice(0,65536);buf=buf.slice(65536);await new Promise<void>((ok,no)=>{const t=d.transaction('chunks','readwrite');t.objectStore('chunks').put({id:id+':'+idx++,fileId:id,fileName:file.name,text:chunk});t.oncomplete=()=>ok();t.onerror=()=>no(t.error);});}progress(Math.min(.98,read/Math.max(file.size,1)));}buf+=decoder.decode();if(buf)await new Promise<void>((ok,no)=>{const t=d.transaction('chunks','readwrite');t.objectStore('chunks').put({id:id+':'+idx,fileId:id,fileName:file.name,text:buf});t.oncomplete=()=>ok();t.onerror=()=>no(t.error);});}finally{reader.releaseLock();}}
  d.close();progress(1);
 }
+async function brainContext(query:string):Promise<string>{
+ const terms=(query.toLocaleLowerCase().match(/[a-z0-9_]{3,}|[\u1000-\u109f]{2,}/g)||[]).filter((x,i,a)=>a.indexOf(x)===i).slice(0,24);
+ if(!terms.length)return'';
+ const d=await brainDB();
+ return new Promise((resolve,reject)=>{
+  const tx=d.transaction(['chunks','files'],'readonly'),req=tx.objectStore('chunks').openCursor();
+  const scores:Array<{score:number;text:string;name:string}>=[];let count=0;
+  req.onsuccess=()=>{const cur=req.result;if(!cur)return;
+   const row=cur.value as {fileId:string;text:string;fileName:string};
+   const lower=row.text.toLocaleLowerCase();let score=0;for(const term of terms)if(lower.includes(term))score+=Math.min(4,lower.split(term).length-1);
+   if(score>0){scores.push({score,text:row.text,name:row.fileName});scores.sort((a,b)=>b.score-a.score);if(scores.length>8)scores.pop();}
+   count++;cur.continue();
+  };
+  req.onerror=()=>{d.close();reject(req.error);};
+  tx.oncomplete=()=>{d.close();const picked=scores.slice(0,6);const content=picked.map(x=>'[မှတ်ဉာဏ်ဖိုင်: '+x.name+']\n'+x.text).join('\n\n').slice(0,9000);resolve(content?'\n\nအသုံးပြုသူတင်သွင်းထားသော Brain Memory (သက်ဆိုင်ရာစာသားအပိုင်းများ၊ အချက်အလက်မတွေ့ပါက မခန့်မှန်းပါနှင့်):\n'+content:'');};
+  tx.onerror=()=>{d.close();reject(tx.error);};
+ });
+}
 function renderBrain(view: HTMLElement) {
  view.innerHTML=`<div class="section-head"><div><span class="eyebrow">AMARA BRAIN · MEMORY CORE</span><h2>ကိုယ်ပိုင်မှတ်ဉာဏ်</h2></div><span class="pill" id="brainCount">READY</span></div>
  <section class="brain-stage"><button class="holo-brain" id="brainImport" type="button" aria-label="မှတ်ဉာဏ်ဖိုင်ထည့်ရန်"><span class="brain-orbit"></span><span class="brain-orbit orbit-b"></span><span class="holo-brain-art">🧠</span><span class="brain-tap">＋ Brain ကိုနှိပ်ပြီး ဖိုင်ထည့်ပါ</span></button>
@@ -187,8 +205,9 @@ const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', descripti
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
   const history = messages.slice(-20);
-  const systemPrompt = AMARA_SYSTEM_PROMPT;
+  let systemPrompt = AMARA_SYSTEM_PROMPT;
   try {
+    try { systemPrompt += await brainContext(history[history.length - 1]?.content || ''); } catch { /* Memory retrieval must not block normal chat. */ }
     let answer = '';
     if (provider === 'gemini') {
       const key = localStorage.getItem(GEMINI_KEY_NAME)?.trim();
