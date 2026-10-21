@@ -146,6 +146,8 @@ async function brainContext(query:string):Promise<string>{
   const fileReq=tx.objectStore('files').getAll();
   let chunks:any[]=[]; let files:any[]=[]; let failed=false;
   const fail=(e:any)=>{if(failed)return;failed=true;d.close();reject(e);};
+  chunkReq.onsuccess=()=>{chunks=Array.isArray(chunkReq.result)?chunkReq.result:[];};
+  fileReq.onsuccess=()=>{files=Array.isArray(fileReq.result)?fileReq.result:[];};
   chunkReq.onerror=()=>fail(chunkReq.error);
   fileReq.onerror=()=>fail(fileReq.error);
   tx.oncomplete=async()=>{
