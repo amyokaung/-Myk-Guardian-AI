@@ -167,17 +167,20 @@ async function brainContext(query:string):Promise<string>{
      if(asksAboutSelf&&profileFile)score+=10000;
      if(score>0)rows.push({score,text:body,name,fileId});
     }
-    // Fallback: older/imported Brain entries may have a stored Blob but no searchable chunks.
+    // For personal-memory files, read the original Blob as a whole. Chunk order can split/reorder JSON
+    // records, and taking only the first few chunks may omit the user's actual profile facts.
     if(asksAboutSelf){
-     const chunkedIds=new Set(chunks.map(c=>String(c.fileId||'')));
      for(const file of files){
       const name=String(file.name||'မှတ်ဉာဏ်ဖိုင်');
-      if(!profileName.test(name)||chunkedIds.has(String(file.id))||!file.blob||typeof file.blob.text!=='function')continue;
+      if(!profileName.test(name)||!file.blob||typeof file.blob.text!=='function')continue;
       const type=String(file.type||'');
       const textLike=/\.(txt|md|json|csv|html?|xml|log|ya?ml|ini)$/i.test(name)||type.startsWith('text/')||type==='application/json';
       if(!textLike)continue;
       const body=String(await file.blob.text()).slice(0,18000);
-      if(body.trim())rows.push({score:10000,text:body,name,fileId:String(file.id)});
+      if(body.trim()){
+       for(let i=rows.length-1;i>=0;i--)if(rows[i].fileId===String(file.id))rows.splice(i,1);
+       rows.push({score:100000,text:body,name,fileId:String(file.id)});
+      }
      }
     }
     rows.sort((a,b)=>b.score-a.score);
