@@ -176,10 +176,24 @@ async function brainContext(query:string):Promise<string>{
       const type=String(file.type||'');
       const textLike=/\.(txt|md|json|csv|html?|xml|log|ya?ml|ini)$/i.test(name)||type.startsWith('text/')||type==='application/json';
       if(!textLike)continue;
-      const body=String(await file.blob.text()).slice(0,18000);
+      const body=String(await file.blob.text());
       if(body.trim()){
+       // Search the complete file, not just its first 18 KB. Pick the most relevant windows
+       // from across the file so facts near the end are available to the model too.
+       const profileTerms=['နာမည်','အမည်','အလုပ်','project','project','လုပ်ခဲ့','စိတ်ဝင်စား','ကိုယ်ရေး','about','profile','name','work','built','created','developer','owner'];
+       const windows:Array<{score:number;text:string;name:string;fileId:string;pos:number}>=[];
+       const width=4200, step=3400;
+       for(let pos=0;pos<body.length;pos+=step){
+        const part=body.slice(pos,pos+width);
+        const lower=part.toLocaleLowerCase().normalize('NFC');
+        let score=0;
+        for(const term of unique)if(term.length>=2&&lower.includes(term))score+=term.length>=4?3:1;
+        if(asksAboutSelf)for(const term of profileTerms)if(lower.includes(term))score+=2;
+        if(score>0)windows.push({score:score+Math.min(pos/Math.max(body.length,1),1),text:part,name,fileId:String(file.id),pos});
+       }
+       windows.sort((a,b)=>b.score-a.score);
        for(let i=rows.length-1;i>=0;i--)if(rows[i].fileId===String(file.id))rows.splice(i,1);
-       rows.push({score:100000,text:body,name,fileId:String(file.id)});
+       for(const w of windows.slice(0,8))rows.push({score:100000+w.score,text:w.text,name,fileId:String(file.id)});
       }
      }
     }
