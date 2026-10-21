@@ -358,14 +358,30 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   const refreshNativeStatus = async () => {
     try {
       const status = await MykNative.getStatus();
-      accessibilityStatus.textContent = status.accessibilityEnabled ? (status.serviceConnected ? 'ဖွင့်ထားပြီး Service ချိတ်ဆက်ထားသည်' : 'Settings မှ On ဖြစ်သော်လည်း Service မချိတ်ဆက်သေးပါ — Off/On ပြန်လုပ်ပါ') : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
-      notificationStatus.textContent = status.notificationEnabled ? 'ဖွင့်ထားသည် — Notification Access Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+      accessibilityStatus.textContent = status.accessibilityEnabled
+        ? (status.serviceConnected ? '✓ Android Settings မှ ဖွင့်ထားပြီး Service ချိတ်ဆက်ထားသည်' : '⚠ Android Settings မှ On ဖြစ်သည်၊ Service မချိတ်ဆက်သေးပါ')
+        : '✕ Android Settings မှ ပိတ်ထားသည်';
+      notificationStatus.textContent = status.notificationEnabled
+        ? '✓ Notification Access ကို Android က ဖွင့်ထားကြောင်း အတည်ပြုသည်'
+        : '✕ Notification Access ကို Android Settings မှ ပိတ်ထားသည်';
+      const mic = view.querySelector<HTMLElement>('#micStatus');
+      if (mic) mic.textContent = status.microphoneGranted ? '✓ Android OS: Microphone ခွင့်ပြုထားသည်' : '✕ Android OS: Microphone ခွင့်မပြုထားပါ';
+      const loc = view.querySelector<HTMLElement>('#locationStatus');
+      if (loc) loc.textContent = status.locationGranted ? '✓ Android OS: Location permission ရှိသည်' : '✕ Android OS: Location permission မရှိပါ';
     } catch (err) {
-      accessibilityStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
-      notificationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
+      accessibilityStatus.textContent = 'Native status မရပါ — plugin/APK integration ကို စစ်ပါ';
+      notificationStatus.textContent = 'Native status မရပါ — plugin/APK integration ကို စစ်ပါ';
+      const mic = view.querySelector<HTMLElement>('#micStatus');
+      if (mic) mic.textContent = 'Native status မရပါ';
+      const loc = view.querySelector<HTMLElement>('#locationStatus');
+      if (loc) loc.textContent = 'Native status မရပါ';
     }
   };
   void refreshNativeStatus();
+  // Android Settings ပြီး app ကို ပြန်ဖွင့်လာချိန် OS permission များကို ထပ်စစ်ပါ။
+  const onPermissionReturn = () => { if (document.visibilityState === 'visible') void refreshNativeStatus(); };
+  document.addEventListener('visibilitychange', onPermissionReturn);
+  window.addEventListener('focus', onPermissionReturn);
   view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
     try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ AMARA AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
     catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
