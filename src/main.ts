@@ -415,18 +415,10 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
         return;
       }
       const result = await MykNative.performAction({ action: 'back' });
-      // Do not open a blocking alert immediately: it can block the native
-      // delayed fallback on Android's main thread.
-      window.setTimeout(() => {
-        alert(
-          'Back Action စစ်ဆေးချက်\\n\\n' +
-          'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
-          'Notification Access: ' + status.notificationEnabled + '\\n' +
-          'Native Back Result: ' + result.success + '\\n' +
-          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
-          'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
-        );
-      }, 800);
+      // Successful Back is silent; only show a message if native code reports failure.
+      if (!result.success) {
+        alert('Back Action မအောင်မြင်ပါ။\\n' + (result.message || 'Android က Back ကို လက်မခံပါ။'));
+      }
   
     } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
