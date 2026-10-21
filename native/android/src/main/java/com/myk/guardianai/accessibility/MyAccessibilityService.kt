@@ -27,6 +27,8 @@ class MyAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
+    fun activeWindowPackageName(): String? = rootInActiveWindow?.let { root -> try { root.packageName?.toString() } finally { root.recycleSafely() } }
+
     fun back(): Boolean = performGlobalAction(GLOBAL_ACTION_BACK)
     fun home(): Boolean = performGlobalAction(GLOBAL_ACTION_HOME)
 
