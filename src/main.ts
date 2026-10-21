@@ -23,6 +23,22 @@ let messages: Message[] = [
   { role: 'assistant', content: 'မင်္ဂလာပါ။ အမရာပါ။ 😊 မင်းဘာလိုအပ်လဲ ပြောလိုက်နော်။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
+const tabHistory: string[] = [];
+window.addEventListener('amara-native-back', () => {
+  const drawer = document.querySelector<HTMLElement>('#appDrawer');
+  if (drawer?.classList.contains('open')) {
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    const scrim = document.querySelector<HTMLElement>('#drawerScrim');
+    if (scrim) scrim.hidden = true;
+    document.body.classList.remove('drawer-open');
+    return;
+  }
+  if (activeTab !== 'chat') {
+    activeTab = tabHistory.pop() || 'chat';
+    render();
+  }
+});
 let busy = false;
 type SavedChat = { id: string; title: string; updatedAt: number; messages: Message[] };
 const CHAT_STORE = 'amara.chat.history.v1';
@@ -88,7 +104,7 @@ function render() {
   historyList.innerHTML=savedChats.slice().sort((a,b)=>b.updatedAt-a.updatedAt).map(c=>'<div class="history-row"><button class="history-item '+(c.id===activeChatId?'current':'')+'" data-chat-id="'+esc(c.id)+'"><span>◷</span><span class="history-title">'+esc(c.title||'New chat')+'</span></button><button class="history-delete" data-delete-chat="'+esc(c.id)+'" aria-label="Delete chat">×</button></div>').join('')||'<div class="history-empty">စကားဝိုင်းဟောင်း မရှိသေးပါ</div>';
   historyList.querySelectorAll<HTMLButtonElement>('[data-chat-id]').forEach(b=>b.addEventListener('click',()=>{const c=savedChats.find(x=>x.id===b.dataset.chatId);if(c){activeChatId=c.id;messages=c.messages.map(m=>({...m}));activeTab='chat';setDrawer(false);render();}}));
   historyList.querySelectorAll<HTMLButtonElement>('[data-delete-chat]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=(e.currentTarget as HTMLButtonElement).dataset.deleteChat!;savedChats=savedChats.filter(c=>c.id!==id);try{localStorage.setItem(CHAT_STORE,JSON.stringify(savedChats));}catch{}if(id===activeChatId){activeChatId='chat-'+Date.now();messages=[{role:'assistant',content:'မင်္ဂလာပါ။ အမရာပါ။ 😊 ဘာကူညီပေးရမလဲ။'}];}render();}));
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);activeTab=b.dataset.tab!;render();}));
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);const next=b.dataset.tab!;if(next!==activeTab){tabHistory.push(activeTab);if(tabHistory.length>30)tabHistory.shift();activeTab=next;}render();}));
   app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>{if(activeTab==='chat')startNewChat();else{activeTab='chat';render();}});
   const view=app.querySelector<HTMLElement>('#view')!;
   if(activeTab==='chat') renderChat(view);
