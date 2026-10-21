@@ -520,20 +520,26 @@ class AccessibilityBridgePlugin : Plugin() {
      * Back again after the previous app has become foreground.
      */
     private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
-        // Never move AMARA to the background as a "fallback": that makes Back
-        // appear to exit the app even when Android's Back action failed.
-        // If AMARA is the active app, navigate the WebView history first.
-        val hostActivity = activity
-        if (!hostActivity.isFinishing && !hostActivity.isDestroyed &&
-            service.activeWindowPackageName() == context.packageName) {
-            val webView = bridge?.webView
-            if (webView != null && webView.canGoBack()) {
-                Handler(Looper.getMainLooper()).post { webView.goBack() }
-                return true
+        // WebView access (including obtaining bridge.webView, canGoBack and goBack)
+        // must happen on Android's main thread, never on CapacitorPlugins.
+        Handler(Looper.getMainLooper()).post {
+            val hostActivity = activity
+            if (!hostActivity.isFinishing && !hostActivity.isDestroyed) {
+                val isAmaraForeground = service.activeWindowPackageName() == context.packageName
+                if (isAmaraForeground) {
+                    val webView = bridge?.webView
+                    if (webView != null && webView.canGoBack()) {
+                        webView.goBack()
+                        return@post
+                    }
+                    // No WebView history: do not exit the app. Keep the current page.
+                    return@post
+                }
             }
+            // Another app is foreground: use Android's global Back action.
+            service.back()
         }
-        // For another foreground app (e.g. YouTube), send Android's real global Back.
-        return service.back()
+        return true
     }
 
     @PluginMethod
