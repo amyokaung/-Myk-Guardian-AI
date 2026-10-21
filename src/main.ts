@@ -23,6 +23,22 @@ let messages: Message[] = [
   { role: 'assistant', content: 'မင်္ဂလာပါ။ အမရာပါ။ 😊 မင်းဘာလိုအပ်လဲ ပြောလိုက်နော်။ Gemini သို့မဟုတ် OpenRouter API Key ထည့်ပြီး ဖုန်းလုပ်ဆောင်ချက်တွေကို မြန်မာလို ခိုင်းနိုင်ပါတယ်။' }
 ];
 let activeTab = 'chat';
+const tabHistory: string[] = [];
+window.addEventListener('amara-native-back', () => {
+  const drawer = document.querySelector<HTMLElement>('#appDrawer');
+  if (drawer?.classList.contains('open')) {
+    drawer.classList.remove('open');
+    drawer.setAttribute('aria-hidden', 'true');
+    const scrim = document.querySelector<HTMLElement>('#drawerScrim');
+    if (scrim) scrim.hidden = true;
+    document.body.classList.remove('drawer-open');
+    return;
+  }
+  if (activeTab !== 'chat') {
+    activeTab = tabHistory.pop() || 'chat';
+    render();
+  }
+});
 let busy = false;
 type SavedChat = { id: string; title: string; updatedAt: number; messages: Message[] };
 const CHAT_STORE = 'amara.chat.history.v1';
@@ -88,7 +104,7 @@ function render() {
   historyList.innerHTML=savedChats.slice().sort((a,b)=>b.updatedAt-a.updatedAt).map(c=>'<div class="history-row"><button class="history-item '+(c.id===activeChatId?'current':'')+'" data-chat-id="'+esc(c.id)+'"><span>◷</span><span class="history-title">'+esc(c.title||'New chat')+'</span></button><button class="history-delete" data-delete-chat="'+esc(c.id)+'" aria-label="Delete chat">×</button></div>').join('')||'<div class="history-empty">စကားဝိုင်းဟောင်း မရှိသေးပါ</div>';
   historyList.querySelectorAll<HTMLButtonElement>('[data-chat-id]').forEach(b=>b.addEventListener('click',()=>{const c=savedChats.find(x=>x.id===b.dataset.chatId);if(c){activeChatId=c.id;messages=c.messages.map(m=>({...m}));activeTab='chat';setDrawer(false);render();}}));
   historyList.querySelectorAll<HTMLButtonElement>('[data-delete-chat]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const id=(e.currentTarget as HTMLButtonElement).dataset.deleteChat!;savedChats=savedChats.filter(c=>c.id!==id);try{localStorage.setItem(CHAT_STORE,JSON.stringify(savedChats));}catch{}if(id===activeChatId){activeChatId='chat-'+Date.now();messages=[{role:'assistant',content:'မင်္ဂလာပါ။ အမရာပါ။ 😊 ဘာကူညီပေးရမလဲ။'}];}render();}));
-  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);activeTab=b.dataset.tab!;render();}));
+  app.querySelectorAll<HTMLButtonElement>('[data-tab]').forEach(b=>b.addEventListener('click',()=>{setDrawer(false);const next=b.dataset.tab!;if(next!==activeTab){tabHistory.push(activeTab);if(tabHistory.length>30)tabHistory.shift();activeTab=next;}render();}));
   app.querySelector<HTMLButtonElement>('#headerAction')!.addEventListener('click',()=>{if(activeTab==='chat')startNewChat();else{activeTab='chat';render();}});
   const view=app.querySelector<HTMLElement>('#view')!;
   if(activeTab==='chat') renderChat(view);
@@ -111,16 +127,55 @@ async function saveBrainFile(file:File,progress:(p:number)=>void):Promise<void>{
  if(isText&&file.size){const reader=file.stream().getReader(),decoder=new TextDecoder();let buf='',idx=0,read=0;try{while(true){const x=await reader.read();if(x.done)break;buf+=decoder.decode(x.value,{stream:true});read+=x.value.byteLength;while(buf.length>=65536){const chunk=buf.slice(0,65536);buf=buf.slice(65536);await new Promise<void>((ok,no)=>{const t=d.transaction('chunks','readwrite');t.objectStore('chunks').put({id:id+':'+idx++,fileId:id,fileName:file.name,text:chunk});t.oncomplete=()=>ok();t.onerror=()=>no(t.error);});}progress(Math.min(.98,read/Math.max(file.size,1)));}buf+=decoder.decode();if(buf)await new Promise<void>((ok,no)=>{const t=d.transaction('chunks','readwrite');t.objectStore('chunks').put({id:id+':'+idx,fileId:id,fileName:file.name,text:buf});t.oncomplete=()=>ok();t.onerror=()=>no(t.error);});}finally{reader.releaseLock();}}
  d.close();progress(1);
 }
+async function brainContext(query:string):Promise<string>{
+ const q=query.toLocaleLowerCase().normalize('NFC');
+ const asksAboutSelf=/(ငါ့ကို|ငါ့အကြောင်း|ငါဘယ်သူ|ငါ့နာမည်|ငါ့ရဲ့|ငါ့အချက်အလက်|မှတ်မိ|သိလား|ဘယ်သူလဲ|ကိုယ့်အကြောင်း|ကိုယ့်အကြောင်း|about me|who am i|my name|remember me|do you know me)/i.test(q);
+ const raw=(q.match(/[a-z0-9_]{3,}|[\u1000-\u109F]+/g)||[]);
+ const terms:string[]=[];
+ for(const part of raw){
+  if(/[\u1000-\u109F]/.test(part)){
+   for(let n=2;n<=Math.min(5,part.length);n++)for(let i=0;i+n<=part.length;i++)terms.push(part.slice(i,i+n));
+  }else terms.push(part);
+ }
+ const unique=terms.filter((x,i,a)=>a.indexOf(x)===i).slice(0,140);
+ if(!unique.length&&!asksAboutSelf)return'';
+ const d=await brainDB();
+ return new Promise((resolve,reject)=>{
+  const tx=d.transaction('chunks','readonly'),req=tx.objectStore('chunks').openCursor();
+  const scores:Array<{score:number;text:string;name:string}>= [];
+  req.onsuccess=()=>{
+   const cur=req.result;if(!cur)return;
+   const row=cur.value as {text?:string;fileName?:string;name?:string;fileId?:string};
+   const body=String(row.text||'');
+   const lower=body.toLocaleLowerCase().normalize('NFC');
+   const name=String(row.fileName||row.name||'မှတ်ဉာဏ်ဖိုင်');
+   let score=0;
+   for(const term of unique)if(lower.includes(term))score+=term.length>=4?2:1;
+   if(asksAboutSelf&&/(myk_personal_memory|personal.?memory|profile|ကိုယ်ရေး|ကိုယ်ရေးအချက်အလက်|မှတ်ဉာဏ်)/i.test(name))score+=12;
+   if(score>0){scores.push({score,text:body,name});scores.sort((a,b)=>b.score-a.score);if(scores.length>30)scores.pop();}
+   cur.continue();
+  };
+  req.onerror=()=>{d.close();reject(req.error);};
+  tx.oncomplete=()=>{
+   d.close();
+   const picked=scores.slice(0,asksAboutSelf?10:7);
+   const body=picked.map(x=>'[Brain ဖိုင်: '+x.name+' | ဆက်စပ်မှု '+x.score+']\n'+x.text).join('\n\n').slice(0,12000);
+   if(body)resolve('\n\n[AMARA BRAIN MEMORY — အောက်ပါစာသားသည် အသုံးပြုသူတင်ထားသောဖိုင်များမှ ရှာတွေ့ထားခြင်းဖြစ်သည်။ သက်ဆိုင်ရာမေးခွန်းကို ဒီအချက်အလက်အပေါ် အခြေခံပြီး ဖြေပါ။ ကိုယ်ရေးအချက်အလက်မေးခွန်းဖြစ်ပါက မှတ်ဉာဏ်ဖိုင်ကို ဦးစားပေးပါ။ ဖိုင်ထဲမှာ မတွေ့သောအချက်ကို မခန့်မှန်းပါနှင့်။]\n'+body);
+   else resolve('\n\n[AMARA BRAIN MEMORY: လက်ရှိမေးခွန်းနှင့် ကိုက်ညီသောဖိုင်စာသားကို မတွေ့ပါ။ အသုံးပြုသူက ဖိုင်တင်ထားကြောင်း မငြင်းပါနှင့်၊ သို့သော် အချက်အလက်ကို အတည်မပြုနိုင်ကြောင်း ရိုးရိုးသားသားပြောပါ။]');
+  };
+  tx.onerror=()=>{d.close();reject(tx.error);};
+ });
+}
 function renderBrain(view: HTMLElement) {
  view.innerHTML=`<div class="section-head"><div><span class="eyebrow">AMARA BRAIN · MEMORY CORE</span><h2>ကိုယ်ပိုင်မှတ်ဉာဏ်</h2></div><span class="pill" id="brainCount">READY</span></div>
- <section class="brain-stage"><button class="holo-brain" id="brainImport" type="button" aria-label="မှတ်ဉာဏ်ဖိုင်ထည့်ရန်"><span class="brain-orbit"></span><span class="brain-orbit orbit-b"></span><span class="holo-brain-art">🧠</span><span class="brain-tap">＋ Brain ကိုနှိပ်ပြီး ဖိုင်ထည့်ပါ</span></button>
+ <section class="brain-stage"><button class="holo-brain" id="brainImport" type="button" aria-label="မှတ်ဉာဏ်ဖိုင်ထည့်ရန်"><span class="brain-orbit"></span><span class="brain-orbit orbit-b"></span><span class="holo-brain-art" aria-hidden="true"><svg class="brain-svg" viewBox="0 0 300 260" role="img" aria-label="Holographic brain"><defs><linearGradient id="brainFill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b9ffff"/><stop offset=".34" stop-color="#37bfff"/><stop offset=".68" stop-color="#4778ff"/><stop offset="1" stop-color="#ed7bff"/></linearGradient><filter id="brainGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#brainGlow)" stroke="url(#brainFill)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="#1b68e733"><path d="M148 47C132 22 103 27 94 48 68 39 48 59 54 82 30 98 42 124 56 135 43 159 62 179 82 179 88 202 112 209 132 191L148 174Z"/><path d="M152 47C168 22 197 27 206 48 232 39 252 59 246 82 270 98 258 124 244 135 257 159 238 179 218 179 212 202 188 209 168 191L152 174Z"/><path d="M148 48V176M152 48V176" fill="none" stroke="#d9ffff" stroke-width="2"/><path d="M95 49C82 63 103 73 88 87S67 108 82 124 93 149 82 166M119 42C110 58 128 70 113 83S101 106 119 119 119 147 134 158M205 49C218 63 197 73 212 87S233 108 218 124 207 149 218 166M181 42C190 58 172 70 187 83S199 106 181 119 181 147 166 158" fill="none" stroke="#93faff" stroke-width="2.4"/><path d="M128 190L137 208 150 218 163 208 172 190" fill="none" stroke="#7bdfff" stroke-width="3"/><path d="M60 100L76 103 83 93M89 145L110 139 119 150M124 66L136 76 130 91M240 100L224 103 217 93M211 145L190 139 181 150M176 66L164 76 170 91" fill="none" stroke="#e3ffff" stroke-width="2"/></g><g fill="#eaffff"><circle cx="95" cy="49" r="3"/><circle cx="119" cy="42" r="2.5"/><circle cx="205" cy="49" r="3"/><circle cx="181" cy="42" r="2.5"/><circle cx="82" cy="166" r="3"/><circle cx="218" cy="166" r="3"/></g></svg></span><span class="brain-file-orbs" id="brainFileOrbs" aria-hidden="true"></span><span class="brain-tap">＋ Brain ကိုနှိပ်ပြီး ဖိုင်ထည့်ပါ</span></button>
  <div class="brain-status" id="brainStatus">✦ Brain အဆင်သင့်ဖြစ်နေပါပြီ</div><div class="brain-progress-wrap" id="brainProgressWrap" hidden><div class="brain-progress-label"><span id="brainProgressText">အချက်အလက်ထည့်သွင်းနေသည်…</span><b id="brainPercent">0%</b></div><div class="brain-progress"><span id="brainProgress"></span></div></div></section>
  <input id="brainPicker" type="file" multiple hidden />
  <section class="card brain-library"><h3>သိမ်းဆည်းထားသော ဖိုင်များ</h3><p class="muted">App က ဖိုင်အရွယ်အစားကို သီးခြားကန့်သတ်မထားပါ။ ဖုန်း၏ လွတ်နေသော storage နှင့် Android ကန့်သတ်ချက်များတော့ သက်ရောက်နိုင်သည်။</p><div id="brainFiles"><p class="muted">ဖိုင်စာရင်း ဖတ်နေသည်…</p></div></section>
- <div class="card"><b>မှတ်ချက်</b><p class="muted">Text ဖိုင်များကို အပိုင်းလိုက်ဖတ်ပြီး local index သိမ်းမည်။ PDF၊ ပုံ၊ အသံ၊ ဗီဒီယိုနှင့် အခြားဖိုင်များကို မူရင်းဖိုင်အဖြစ် သိမ်းမည်။ ၎င်းတို့၏ အတွင်းစာသားကို AI က ဖတ်ရှုနိုင်ရန် နောက်ထပ် extraction စနစ်လိုအပ်သည်။</p></div>
+ <div class="card"><b>ဖတ်ရှုမှုအခြေအနေ</b><p class="muted">TXT, MD, JSON, CSV နှင့် text အမျိုးအစားများကို ဖတ်ပြီး AI ရှာဖွေရန် index လုပ်ပေးသည်။ PDF၊ ZIP၊ ပုံ၊ အသံ၊ ဗီဒီယိုတို့ကို လက်ရှိ build တွင် သိမ်းထားနိုင်သော်လည်း အတွင်းစာသားကို အလိုအလျောက် မထုတ်ယူနိုင်သေးပါ။ အဲဒီဖိုင်များကို ဖတ်ပြီးပြီဟု မယူဆပါနှင့်။</p></div>
  <button class="secondary wide" id="brainBackToChat">Chat ကို ပြန်သွားမယ်</button>`;
  const picker=view.querySelector<HTMLInputElement>('#brainPicker')!,brain=view.querySelector<HTMLButtonElement>('#brainImport')!,status=view.querySelector<HTMLElement>('#brainStatus')!,wrap=view.querySelector<HTMLElement>('#brainProgressWrap')!,bar=view.querySelector<HTMLElement>('#brainProgress')!,percent=view.querySelector<HTMLElement>('#brainPercent')!,progressText=view.querySelector<HTMLElement>('#brainProgressText')!;
- const refresh=async()=>{const files=await brainFiles();view.querySelector<HTMLElement>('#brainCount')!.textContent=files.length+' FILES';view.querySelector<HTMLElement>('#brainFiles')!.innerHTML=files.length?files.map(f=>'<div class="brain-file-row"><span class="brain-file-icon">'+(f.extracted?'▤':'◈')+'</span><span class="brain-file-copy"><b>'+esc(f.name)+'</b><small>'+brainSize(f.size)+' · '+(f.extracted?'စာသား index သိမ်းပြီး':'မူရင်းဖိုင် သိမ်းပြီး')+'</small></span><span class="brain-check">✓</span></div>').join(''):'<p class="muted">ဖိုင်မရှိသေးပါ။ Brain ကိုနှိပ်ပြီး ဖိုင်ရွေးပါ။</p>';};
+ const refresh=async()=>{const files=await brainFiles();view.querySelector<HTMLElement>('#brainCount')!.textContent=files.length+' FILES';view.querySelector<HTMLElement>('#brainFiles')!.innerHTML=files.length?files.map(f=>'<div class="brain-file-row"><span class="brain-file-icon">'+(f.extracted?'▤':'◈')+'</span><span class="brain-file-copy"><b>'+esc(f.name)+'</b><small>'+brainSize(f.size)+' · '+(f.extracted?'စာသားဖတ်ပြီး AI ရှာဖွေနိုင်':'ဖိုင်သိမ်းထားသည် · စာသားမဖတ်ရသေး')+'</small></span><span class="brain-check">'+(f.extracted?'✓':'!')+'</span></div>').join(''):'<p class="muted">ဖိုင်မရှိသေးပါ။ ဦးနှောက်ကိုနှိပ်ပြီး ဖိုင်ရွေးပါ။</p>';const orbs=view.querySelector<HTMLElement>('#brainFileOrbs');if(orbs)orbs.innerHTML=files.slice(0,8).map((f,i)=>'<span class="brain-file-orb orb-'+i+'">'+(f.name.toLowerCase().endsWith('.pdf')?'PDF':f.name.toLowerCase().endsWith('.json')?'{}':f.name.toLowerCase().endsWith('.zip')?'ZIP':f.name.toLowerCase().match(/\\.(png|jpe?g|webp)$/)?'IMG':'TXT')+'</span>').join('');};
  brain.addEventListener('click',()=>picker.click());
  picker.addEventListener('change',async()=>{const files=Array.from(picker.files||[]);if(!files.length)return;brain.disabled=true;brain.classList.add('processing');wrap.hidden=false;let done=0,failed=0;
  for(const f of files){status.textContent='⚡ '+f.name+' ကို Brain ထဲ ထည့်သွင်းနေသည်…';progressText.textContent=f.name;bar.style.width='0%';percent.textContent='0%';try{await saveBrainFile(f,p=>{bar.style.width=Math.round(p*100)+'%';percent.textContent=Math.round(p*100)+'%';});done++;}catch(e){failed++;status.textContent='ဖိုင်သိမ်းမရပါ။ Storage ပြည့်နေခြင်း သို့မဟုတ် စနစ်ကန့်သတ်ချက် ဖြစ်နိုင်သည်။';}await refresh();}
@@ -183,25 +238,6 @@ const GEMINI_KEY_NAME = 'myk.gemini.key';
 const GEMINI_MODEL_NAME = 'myk.gemini.model';
 const OPENROUTER_TOOLS = [{ type: 'function', function: { name: 'phone_action', description: 'Run Android actions. Use get_location for the device current GPS location; search_places to open a named place in Maps; set_alarm to request a real Android Clock alarm; open_app with app=Notes to open Notes; write_note only when the user asks to create/write note content; open_phone opens the dialer; call_phone only prefills a number and never calls automatically; search_youtube opens song results.', parameters: { type: 'object', properties: { action: { type: 'string', enum: ['get_weather','get_location','open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text','search_youtube','open_phone','call_phone','write_note','set_text','search_places','set_alarm'] }, app: { type: 'string', description: 'App name, required only for open_app.' }, text: { type: 'string', description: 'Visible text to click; note content for write_note; text to insert for set_text.' }, query: { type: 'string', description: 'Song title/artist for search_youtube, destination/place query for search_places, or optional city name for get_weather (omit query for current GPS location).' }, number: { type: 'string', description: 'Phone number for call_phone; opens dialer with the number filled in and waits for the user to tap Call.' }, hour: { type: 'integer', description: 'Alarm hour in 24-hour format 0-23 for set_alarm.' }, minute: { type: 'integer', description: 'Alarm minute 0-59 for set_alarm.' }, label: { type: 'string', description: 'Alarm label for set_alarm.' }, exact: { type: 'boolean', description: 'Match visible text exactly when true.' } }, required: ['action'], additionalProperties: false } } }];
 const GEMINI_TOOLS = [{ functionDeclarations: [{ name: 'phone_action', description: 'Run one allowed Android phone action. Use get_location for GPS location, search_places for Maps destinations, and set_alarm for Android Clock.', parameters: { type: 'OBJECT', properties: { action: { type: 'STRING', enum: ['get_weather','get_location','open_app','back','home','media_next','media_previous','media_play_pause','volume_up','volume_down','open_settings','click_text','search_youtube','open_phone','call_phone','write_note','set_text','search_places','set_alarm'] }, app: { type: 'STRING' }, text: { type: 'STRING' }, query: { type: 'STRING' }, number: { type: 'STRING' }, hour: { type: 'INTEGER' }, minute: { type: 'INTEGER' }, label: { type: 'STRING' }, exact: { type: 'BOOLEAN' } }, required: ['action'] } }] }];
-
-async function brainContext(query:string):Promise<string>{
- const q=query.toLocaleLowerCase().normalize('NFC');
- const raw=(q.match(/[a-z0-9_]{3,}|[\u1000-\u109F]+/g)||[]);
- const terms:string[]=[];
- for(const part of raw){if(/[\u1000-\u109F]/.test(part)){for(let n=2;n<=Math.min(5,part.length);n++)for(let i=0;i+n<=part.length;i++)terms.push(part.slice(i,i+n));}else terms.push(part);}
- const unique=terms.filter((x,i,a)=>a.indexOf(x)===i).slice(0,140);
- const asksAboutSelf=/(ငါ့ကို|ငါ့အကြောင်း|ငါဘယ်သူ|ငါ့နာမည်|ငါ့ရဲ့|မှတ်မိ|သိလား|ဘယ်သူလဲ|about me|who am i|my name|remember me)/i.test(q);
- if(!unique.length&&!asksAboutSelf)return'';
- const d=await brainDB();
- return new Promise((resolve,reject)=>{
-  const tx=d.transaction('chunks','readonly'),req=tx.objectStore('chunks').openCursor();
-  const scores:Array<{score:number;text:string;name:string}>= [];
-  req.onsuccess=()=>{const cur=req.result;if(!cur)return;const row=cur.value as {text:string;fileName?:string;name?:string};const lower=String(row.text||'').toLocaleLowerCase().normalize('NFC');let score=0;for(const term of unique)if(lower.includes(term))score+=term.length>=4?2:1;const name=String(row.fileName||row.name||'မှတ်ဉာဏ်ဖိုင်');if(asksAboutSelf&&/(myk_personal_memory|personal.?memory|profile|ကိုယ်ရေး|ကိုယ်ရေးအချက်အလက်)/i.test(name))score+=8;if(score>0){scores.push({score,text:String(row.text||''),name});scores.sort((a,b)=>b.score-a.score);if(scores.length>30)scores.pop();}cur.continue();};
-  req.onerror=()=>{d.close();reject(req.error);};
-  tx.oncomplete=()=>{d.close();const picked=scores.slice(0,asksAboutSelf?10:7);const body=picked.map(x=>'[ဖိုင်: '+x.name+']\n'+x.text).join('\n\n').slice(0,12000);resolve(body?'\n\n[AMARA BRAIN MEMORY: အသုံးပြုသူတင်ထားသောဖိုင်မှ ရှာတွေ့ထားသည့်အချက်အလက်။ သက်ဆိုင်ရာအချက်ကို အခြေခံပြီး ဖြေပါ။ မတွေ့သောအချက်ကို မခန့်မှန်းပါနှင့်။]\n'+body:'\n\n[AMARA BRAIN MEMORY: လက်ရှိမေးခွန်းနှင့် ကိုက်ညီသည့်စာသား မတွေ့ပါ။ ဖိုင်ထဲမှာ မရှိပါက မသိကြောင်း ရိုးရိုးသားသားပြောပါ။]');};
-  tx.onerror=()=>{d.close();reject(tx.error);};
- });
-}
 
 async function askAI() {
   const provider = localStorage.getItem(PROVIDER_NAME) || 'openrouter';
@@ -344,14 +380,30 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   const refreshNativeStatus = async () => {
     try {
       const status = await MykNative.getStatus();
-      accessibilityStatus.textContent = status.accessibilityEnabled ? (status.serviceConnected ? 'ဖွင့်ထားပြီး Service ချိတ်ဆက်ထားသည်' : 'Settings မှ On ဖြစ်သော်လည်း Service မချိတ်ဆက်သေးပါ — Off/On ပြန်လုပ်ပါ') : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
-      notificationStatus.textContent = status.notificationEnabled ? 'ဖွင့်ထားသည် — Notification Access Enabled' : 'မဖွင့်ရသေးပါ — Android Settings မှ ဖွင့်ပါ';
+      accessibilityStatus.textContent = status.accessibilityEnabled
+        ? (status.serviceConnected ? '✓ Android Settings မှ ဖွင့်ထားပြီး Service ချိတ်ဆက်ထားသည်' : '⚠ Android Settings မှ On ဖြစ်သည်၊ Service မချိတ်ဆက်သေးပါ')
+        : '✕ Android Settings မှ ပိတ်ထားသည်';
+      notificationStatus.textContent = status.notificationEnabled
+        ? '✓ Notification Access ကို Android က ဖွင့်ထားကြောင်း အတည်ပြုသည်'
+        : '✕ Notification Access ကို Android Settings မှ ပိတ်ထားသည်';
+      const mic = view.querySelector<HTMLElement>('#micStatus');
+      if (mic) mic.textContent = status.microphoneGranted ? '✓ Android OS: Microphone ခွင့်ပြုထားသည်' : '✕ Android OS: Microphone ခွင့်မပြုထားပါ';
+      const loc = view.querySelector<HTMLElement>('#locationStatus');
+      if (loc) loc.textContent = status.locationGranted ? '✓ Android OS: Location permission ရှိသည်' : '✕ Android OS: Location permission မရှိပါ';
     } catch (err) {
-      accessibilityStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
-      notificationStatus.textContent = 'Native plugin မရပါ။ နောက်ဆုံး APK ကို install လုပ်ထားကြောင်း စစ်ပါ။';
+      accessibilityStatus.textContent = 'Native status မရပါ — plugin/APK integration ကို စစ်ပါ';
+      notificationStatus.textContent = 'Native status မရပါ — plugin/APK integration ကို စစ်ပါ';
+      const mic = view.querySelector<HTMLElement>('#micStatus');
+      if (mic) mic.textContent = 'Native status မရပါ';
+      const loc = view.querySelector<HTMLElement>('#locationStatus');
+      if (loc) loc.textContent = 'Native status မရပါ';
     }
   };
   void refreshNativeStatus();
+  // Android Settings ပြီး app ကို ပြန်ဖွင့်လာချိန် OS permission များကို ထပ်စစ်ပါ။
+  const onPermissionReturn = () => { if (document.visibilityState === 'visible') void refreshNativeStatus(); };
+  document.addEventListener('visibilitychange', onPermissionReturn);
+  window.addEventListener('focus', onPermissionReturn);
   view.querySelector<HTMLButtonElement>('#enableAccessibility')!.addEventListener('click', async () => {
     try { await MykNative.openAccessibilitySettings(); alert('Android Accessibility Settings ပွင့်လာပါမယ်။ AMARA AI ကို ရွေးပြီး Enable လုပ်ပါ။'); }
     catch (err) { alert('Accessibility Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
@@ -369,18 +421,10 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
         return;
       }
       const result = await MykNative.performAction({ action: 'back' });
-      // Do not open a blocking alert immediately: it can block the native
-      // delayed fallback on Android's main thread.
-      window.setTimeout(() => {
-        alert(
-          'Back Action စစ်ဆေးချက်\\n\\n' +
-          'Accessibility Enabled: ' + status.accessibilityEnabled + '\\n' +
-          'Notification Access: ' + status.notificationEnabled + '\\n' +
-          'Native Back Result: ' + result.success + '\\n' +
-          'အသေးစိတ်: ' + (result.message || 'Android က အသေးစိတ်မပြန်ပေးပါ။') + '\\n\\n' +
-          'ဖုန်းမျက်နှာပြင် မပြောင်းပါက ဒီစာကို screenshot ရိုက်ပို့ပါ။'
-        );
-      }, 800);
+      // Successful Back is silent; only show a message if native code reports failure.
+      if (!result.success) {
+        alert('Back Action မအောင်မြင်ပါ။\\n' + (result.message || 'Android က Back ကို လက်မခံပါ။'));
+      }
   
     } catch (err) { alert('Action မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
