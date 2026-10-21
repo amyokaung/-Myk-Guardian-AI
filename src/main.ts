@@ -129,7 +129,7 @@ async function saveBrainFile(file:File,progress:(p:number)=>void):Promise<void>{
 }
 async function brainContext(query:string):Promise<string>{
  const q=query.toLocaleLowerCase().normalize('NFC');
- const asksAboutSelf=/(ငါ့ကို|ငါ့အကြောင်း|ငါဘယ်သူ|ငါ့နာမည်|ငါ့ရဲ့|ငါ့အချက်အလက်|မသိသေးဘူး|မသိဘူး|ငါ့ကိုမသိ|မှတ်မိ|သိလား|ဘယ်သူလဲ|ကိုယ့်အကြောင်း|ကိုယ့်အကြောင်း|မှတ်ဉာဏ်ကို|မှတ်ဉာဏ်ထဲ|about me|who am i|my name|remember me|do you know me)/i.test(q);
+ const asksAboutSelf=/(ငါ့ကို|ငါ့အကြောင်း|ငါဘယ်သူ|ငါ့နာမည်|ငါ့ရဲ့|ငါ့အချက်အလက်|မသိသေးဘူး|မသိဘူး|မင်းငါ့ကို|ငါ့ကိုသိ|မှတ်မိ|သိလား|ဘယ်သူလဲ|ကိုယ့်အကြောင်း|ကိုယ့်အကြောင်း|မှတ်ဉာဏ်|မှတ်ညဏ်|မှတ်ဉာဏ်ကို|မှတ်ညဏ်ကို|မှတ်ဉာဏ်ထဲ|မှတ်ညဏ်ထဲ|brain|memory|about me|who am i|my name|remember me|do you know me)/i.test(q);
  const raw=(q.match(/[a-z0-9_]{3,}|[\u1000-\u109F]+/g)||[]);
  const terms:string[]=[];
  for(const part of raw){
@@ -142,32 +142,56 @@ async function brainContext(query:string):Promise<string>{
  const d=await brainDB();
  return new Promise((resolve,reject)=>{
   const tx=d.transaction(['chunks','files'],'readonly');
-  const req=tx.objectStore('chunks').openCursor();
-  const scores:Array<{score:number;text:string;name:string;fileId:string}>= [];
-  req.onsuccess=()=>{
-   const cur=req.result;if(!cur)return;
-   const row=cur.value as {text?:string;fileName?:string;name?:string;fileId?:string};
-   const body=String(row.text||'');
-   const lower=body.toLocaleLowerCase().normalize('NFC');
-   const name=String(row.fileName||row.name||'မှတ်ဉာဏ်ဖိုင်');
-   const profileFile=/(myk.?personal.?memory|personal.?memory|profile|ကိုယ်ရေး|ကိုယ်ရေးအချက်အလက်|personal.?data|user.?memory|gemini.?export)/i.test(name);
-   let score=0;
-   for(const term of unique)if(lower.includes(term))score+=term.length>=4?2:1;
-   if(asksAboutSelf&&profileFile)score+=10000;
-   if(score>0){scores.push({score,text:body,name,fileId:String(row.fileId||'')});scores.sort((a,b)=>b.score-a.score);if(scores.length>80)scores.pop();}
-   cur.continue();
+  const chunkReq=tx.objectStore('chunks').getAll();
+  const fileReq=tx.objectStore('files').getAll();
+  let chunks:any[]=[]; let files:any[]=[]; let failed=false;
+  const fail=(e:any)=>{if(failed)return;failed=true;d.close();reject(e);};
+  chunkReq.onerror=()=>fail(chunkReq.error);
+  fileReq.onerror=()=>fail(fileReq.error);
+  tx.oncomplete=async()=>{
+   if(failed)return;
+   try{
+    const rows:Array<{score:number;text:string;name:string;fileId:string}>=[];
+    const profileName=/(myk.?personal.?memory|personal.?memory|profile|ကိုယ်ရေး|ကိုယ်ရေးအချက်အလက်|personal.?data|user.?memory|gemini.?export|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
+    const fileById=new Map<string,any>(files.map(f=>[String(f.id),f]));
+    for(const row of chunks){
+     const body=String(row.text||''); if(!body.trim())continue;
+     const fileId=String(row.fileId||'');
+     const file=fileById.get(fileId);
+     const name=String(row.fileName||file?.name||row.name||'မှတ်ဉာဏ်ဖိုင်');
+     const profileFile=profileName.test(name);
+     let score=0;
+     for(const term of unique)if(term.length>=2&&body.toLocaleLowerCase().normalize('NFC').includes(term))score+=term.length>=4?2:1;
+     if(asksAboutSelf&&profileFile)score+=10000;
+     if(score>0)rows.push({score,text:body,name,fileId});
+    }
+    // Fallback: older/imported Brain entries may have a stored Blob but no searchable chunks.
+    if(asksAboutSelf){
+     const chunkedIds=new Set(chunks.map(c=>String(c.fileId||'')));
+     for(const file of files){
+      const name=String(file.name||'မှတ်ဉာဏ်ဖိုင်');
+      if(!profileName.test(name)||chunkedIds.has(String(file.id))||!file.blob||typeof file.blob.text!=='function')continue;
+      const type=String(file.type||'');
+      const textLike=/\.(txt|md|json|csv|html?|xml|log|ya?ml|ini)$/i.test(name)||type.startsWith('text/')||type==='application/json';
+      if(!textLike)continue;
+      const body=String(await file.blob.text()).slice(0,18000);
+      if(body.trim())rows.push({score:10000,text:body,name,fileId:String(file.id)});
+     }
+    }
+    rows.sort((a,b)=>b.score-a.score);
+    if(!rows.length){
+     const names=files.map(f=>String(f.name||'')).filter(Boolean).slice(0,30);
+     d.close();
+     resolve('\n\n[AMARA BRAIN STATUS: Brain ဖိုင် '+files.length+' ခု၊ ရှာဖွေနိုင်သော အပိုင်း '+chunks.length+' ခု။ ဆက်စပ်အချက်အလက် မတွေ့ပါ။ ဖိုင်အမည်များ: '+(names.join(', ')||'ဖိုင်မရှိသေးပါ')+'. ဖိုင်ထဲကအချက်အလက် မတွေ့လျှင် မသိသလို ရိုးရိုးသားသားပြောပါ။]');
+     return;
+    }
+    const selected=asksAboutSelf?rows.filter(x=>x.score>=10000).slice(0,8):rows.slice(0,7);
+    const picked=selected.length?selected:rows.slice(0,asksAboutSelf?8:7);
+    const body=picked.map(x=>'[Brain ဖိုင်: '+x.name+']\n'+x.text).join('\n\n').slice(0,18000);
+    d.close();
+    resolve('\n\n[AMARA BRAIN MEMORY — အောက်ပါစာသားသည် အသုံးပြုသူတင်ထားသော Brain ဖိုင်မှ ရယူထားခြင်းဖြစ်သည်။ မိမိအကြောင်းမေးလျှင် အချက်အလက်ကို အရင်ရှာဖတ်ပြီး ဖိုင်ထဲရှိ တိကျသောအချက်များကိုသာ ပြန်ဖြေပါ။ အချက်အလက်မတွေ့လျှင် မခန့်မှန်းပါနှင့်။]\n'+body);
+   }catch(e){d.close();reject(e);}
   };
-  req.onerror=()=>{d.close();reject(req.error);};
-  tx.oncomplete=()=>{
-   const rows=scores.slice();
-   if(!rows.length){d.close();resolve('\n\n[AMARA BRAIN MEMORY: မှတ်ဉာဏ်ဖိုင်ထဲမှ ဆက်စပ်စာသားကို မတွေ့နိုင်သေးပါ။ အသုံးပြုသူကို မမှတ်မိဘူးဟု ချက်ချင်းမပြောဘဲ Brain ဖိုင်တင်ထားမှုနှင့် ဖတ်ရှုနိုင်မှုကို စစ်ဆေးရန် ပြောပါ။]');return;}
-   const selected=asksAboutSelf?rows.filter(x=>x.score>=10000).slice(0,16):rows.slice(0,7);
-   const picked=selected.length?selected:rows.slice(0,asksAboutSelf?12:7);
-   const body=picked.map(x=>'[Brain ဖိုင်: '+x.name+' | ဆက်စပ်မှု '+x.score+']\n'+x.text).join('\n\n').slice(0,18000);
-   d.close();
-   resolve('\n\n[AMARA BRAIN MEMORY — Brain မှတ်ဉာဏ်ဖိုင်များမှ ရှာဖွေတွေ့ရှိထားသော အချက်အလက်များ။ မိမိအကြောင်း/မှတ်မိလားဟု မေးပါက ဤစာသားကို အရင်ဖတ်ပြီး အချက်အလက်အပေါ် တိတိကျကျဖြေပါ။ ဖိုင်ထဲမှာမတွေ့သောအချက်ကို မခန့်မှန်းပါနှင့်။]\n'+body);
-  };
-  tx.onerror=()=>{d.close();reject(tx.error);};
  });
 }
 function renderBrain(view: HTMLElement) {
