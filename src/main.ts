@@ -589,8 +589,9 @@ function renderSettings(view: HTMLElement) {
       list.innerHTML = models.map((m:any)=>'<option value="'+esc(m.id)+'"></option>').join('');
       select.innerHTML = '<option value="">Model ရွေးပါ ('+models.length+' ခု)</option>' + models.map((m:any)=>'<option value="'+esc(m.id)+'">'+esc(m.name || m.id)+' · '+esc(m.id)+'</option>').join('');
       const current = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
-      if (models.some((m:any)=>m.id===current)) select.value = current;
-      status.textContent = models.length+' ခု ရရှိနိုင်သော OpenRouter Model များကို တင်ပြီးပါပြီ။ Model တချို့မှာ key/credits သို့မဟုတ် provider အကန့်အသတ် ရှိနိုင်ပါတယ်။';
+      const preferred = models.find((m:any)=>m.id===current) || models.find((m:any)=>m.id==='google/gemini-2.5-flash') || models.find((m:any)=>m.id==='google/gemini-2.0-flash-001');
+      if (preferred) { select.value = preferred.id; view.querySelector<HTMLInputElement>('#modelId')!.value = preferred.id; }
+      status.textContent = models.length+' ခု ရရှိနိုင်သော OpenRouter Model များကို တင်ပြီးပါပြီ။ Gemini ကို OpenRouter မှ သုံးလိုလျှင် google/gemini-2.5-flash ကဲ့သို့ OpenRouter ID ကိုရွေးပါ။';
     } catch (e) { status.textContent = 'Model စာရင်း မရပါ: '+(e instanceof Error?e.message:'Unknown error'); }
   });
   view.querySelector<HTMLSelectElement>('#availableOpenRouterModels')!.addEventListener('change', (e) => {
