@@ -294,8 +294,16 @@ async function askAI() {
       const key = localStorage.getItem(KEY_NAME)?.trim();
       if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။ Settings မှာ OpenRouter ကိုရွေးပြီး Key ထည့်ပါ။');
       const model = localStorage.getItem(MODEL_NAME) || DEFAULT_MODEL;
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'AMARA AI' }, body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))], tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
-      const data = await response.json();
+      const headers = { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'AMARA AI' };
+      const chatMessages = [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))];
+      let response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers, body: JSON.stringify({ model, messages: chatMessages, tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
+      let data = await response.json();
+      // Some OpenRouter models do not support function/tool calling. Retry plain chat for those models.
+      const firstError = String(data?.error?.message || '');
+      if (!response.ok && response.status === 400 && /tool|function|unsupported|not support/i.test(firstError)) {
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers, body: JSON.stringify({ model, messages: chatMessages, temperature: 0.4, max_tokens: 900 }) });
+        data = await response.json();
+      }
       if (!response.ok) throw new Error(data?.error?.message || 'OpenRouter HTTP ' + response.status);
       const message = data?.choices?.[0]?.message;
       const call = message?.tool_calls?.find((t: any) => t.function?.name === 'phone_action');
