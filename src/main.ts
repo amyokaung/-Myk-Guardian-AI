@@ -154,7 +154,7 @@ async function brainContext(query:string):Promise<string>{
    if(failed)return;
    try{
     const rows:Array<{score:number;text:string;name:string;fileId:string}>=[];
-    const profileName=/(myk.?personal.?memory|personal.?memory|profile|ကိုယ်ရေး|ကိုယ်ရေးအချက်အလက်|personal.?data|user.?memory|gemini.?export|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
+    const profileName=/(myk.?personal.?memory|myk.?ai.?memory|memory.?merged|merged.?memory|personal.?memory|profile|ကိုယ်ရေး|ကိုယ်ရေးအချက်အလက်|personal.?data|user.?memory|gemini.?export|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
     const fileById=new Map<string,any>(files.map(f=>[String(f.id),f]));
     for(const row of chunks){
      const body=String(row.text||''); if(!body.trim())continue;
