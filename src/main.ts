@@ -290,7 +290,15 @@ function renderChat(view: HTMLElement) {
   const renderMessages=()=>{list.innerHTML=messages.map(m=>'<article class="message '+m.role+'"><div class="msg-label">'+(m.role==='user'?'မင်း · YOU':'အမရာ · AMARA')+'</div><div class="message-text">'+esc(m.content).replace(/\n/g,'<br>')+'</div></article>').join('')+(busy?'<article class="message assistant"><div class="msg-label">အမရာ · AMARA</div><div class="typing">စဉ်းစားနေသည် <i></i><i></i><i></i></div></article>':'');};
   const usageEl=view.querySelector<HTMLElement>('#usageSummary');
   const selectedModel=localStorage.getItem(MODEL_NAME)||DEFAULT_MODEL;
-  if(usageEl){const all=Object.entries(readUsage());const u=readUsage()[selectedModel]||{promptTokens:0,completionTokens:0,requests:0,costUsd:0,costKnown:false};const cat=readModelCatalog().find(m=>m.id===selectedModel);const known=all.some(([,x])=>x.costKnown);const total=all.reduce((n,[,x])=>n+(x.costKnown?x.costUsd:0),0);const tokens=all.reduce((n,[,x])=>n+x.promptTokens+x.completionTokens,0);usageEl.innerHTML='<div><b>ရွေးထားသော Model · '+esc(selectedModel)+'</b></div><div>Input '+u.promptTokens.toLocaleString()+' · Output '+u.completionTokens.toLocaleString()+' tokens · '+u.requests+' requests · '+(u.costKnown?money(u.costUsd):'ကုန်ကျစရိတ် မတွက်နိုင်သေး')+'</div><div><b>OpenRouter စုစုပေါင်း:</b> '+(known?money(total):'ကုန်ကျစရိတ် မသိရသေး')+' · '+tokens.toLocaleString()+' tokens</div>'+(cat?'<div>'+esc(modelPriceLabel(cat))+'</div>':'<div>Settings မှာ Model စာရင်းတင်ပြီး ဈေးနှုန်းကြည့်နိုင်ပါတယ်။</div>');}const cat=readModelCatalog().find(m=>m.id===selectedModel);usageEl.innerHTML='<div><b>အသုံးပြုမှု · '+esc(selectedModel)+'</b></div><div>Input '+u.promptTokens.toLocaleString()+' tokens · Output '+u.completionTokens.toLocaleString()+' tokens · '+u.requests+' requests · '+(u.costKnown?money(u.costUsd):'ကုန်ကျစရိတ် မတွက်နိုင်သေး')+'</div>'+(cat?'<div>'+esc(modelPriceLabel(cat))+'</div>':'<div>Settings မှာ Model စာရင်းတင်ပြီး ဈေးနှုန်းကြည့်နိုင်ပါတယ်။</div>');}
+  if(usageEl){
+    const all=Object.entries(readUsage());
+    const u=readUsage()[selectedModel]||{promptTokens:0,completionTokens:0,requests:0,costUsd:0,costKnown:false};
+    const cat=readModelCatalog().find(m=>m.id===selectedModel);
+    const known=all.some(([,x])=>x.costKnown);
+    const total=all.reduce((n,[,x])=>n+(x.costKnown?x.costUsd:0),0);
+    const tokens=all.reduce((n,[,x])=>n+x.promptTokens+x.completionTokens,0);
+    usageEl.innerHTML='<div><b>ရွေးထားသော Model · '+esc(selectedModel)+'</b></div><div>Input '+u.promptTokens.toLocaleString()+' · Output '+u.completionTokens.toLocaleString()+' tokens · '+u.requests+' requests · '+(u.costKnown?money(u.costUsd):'ကုန်ကျစရိတ် မတွက်နိုင်သေး')+'</div><div><b>OpenRouter စုစုပေါင်း:</b> '+(known?money(total):'ကုန်ကျစရိတ် မသိရသေး')+' · '+tokens.toLocaleString()+' tokens</div>'+(cat?'<div>'+esc(modelPriceLabel(cat))+'</div>':'<div>Settings မှာ Model စာရင်းတင်ပြီး ဈေးနှုန်းကြည့်နိုင်ပါတယ်။</div>');
+  }
   renderMessages();
   const input=view.querySelector<HTMLTextAreaElement>('#prompt')!;
   const resize=()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px';};
