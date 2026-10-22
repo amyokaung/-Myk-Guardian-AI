@@ -13,6 +13,15 @@ const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
 const PERM_NAME = 'myk.agent.permissions';
 const DEFAULT_MODEL = 'openai/gpt-4o-mini';
+const MODEL_CATALOG_NAME = 'amara.openrouter.modelCatalog';
+const USAGE_NAME = 'amara.openrouter.usage';
+type ModelPrice = { id:string; name?:string; pricing?:{prompt?:string;completion?:string;request?:string}; context_length?:number };
+type ModelUsage = { promptTokens:number; completionTokens:number; requests:number; costUsd:number; costKnown:boolean };
+const readUsage = (): Record<string, ModelUsage> => { try { return JSON.parse(localStorage.getItem(USAGE_NAME) || '{}'); } catch { return {}; } };
+const readModelCatalog = (): ModelPrice[] => { try { const v=JSON.parse(localStorage.getItem(MODEL_CATALOG_NAME)||'[]'); return Array.isArray(v)?v:[]; } catch { return []; } };
+const money = (v:number) => '$'+v.toFixed(v<0.01?6:4);
+function recordOpenRouterUsage(model:string,data:any){const usage=data?.usage;if(!usage)return;const promptTokens=Number(usage.prompt_tokens||usage.input_tokens||0),completionTokens=Number(usage.completion_tokens||usage.output_tokens||0);const all=readUsage(),entry=all[model]||{promptTokens:0,completionTokens:0,requests:0,costUsd:0,costKnown:false};const price=readModelCatalog().find(m=>m.id===model)?.pricing;const pr=Number(price?.prompt),cr=Number(price?.completion),reported=Number(usage.cost);let cost=0,known=false;if(usage.cost!==undefined&&Number.isFinite(reported)){cost=reported;known=true;}else if(price?.prompt!==undefined&&price?.completion!==undefined&&Number.isFinite(pr)&&Number.isFinite(cr)){cost=promptTokens*pr+completionTokens*cr;known=true;}entry.promptTokens+=promptTokens;entry.completionTokens+=completionTokens;entry.requests+=1;if(known){entry.costUsd+=cost;entry.costKnown=true;}all[model]=entry;localStorage.setItem(USAGE_NAME,JSON.stringify(all));}
+function modelPriceLabel(model:ModelPrice){const p=model.pricing;if(!p||p.prompt===undefined||p.completion===undefined)return 'ဈေးနှုန်း မရရှိ';const input=Number(p.prompt)*1000000,output=Number(p.completion)*1000000;return Number.isFinite(input)&&Number.isFinite(output)?'Input '+money(input)+'/1M · Output '+money(output)+'/1M tokens':'ဈေးနှုန်း မရရှိ';}
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
 const readPerms = (): Record<string, boolean> => {
