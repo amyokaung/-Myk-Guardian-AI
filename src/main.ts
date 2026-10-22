@@ -147,6 +147,20 @@ async function brainContext(query:string):Promise<string>{
    if(failed)return;
    try{
     const fileById=new Map<string,any>(files.map(f=>[String(f.id),f]));
+    const profileName=/(myk.?personal.?memory|myk.?ai.?memory|memory.?merged|merged.?memory|personal.?memory|profile|ကိုယ်ရေး|personal.?data|user.?memory|gemini.?export|memory|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
+    const windows:Array<{score:number;text:string;name:string;fileId:string;pos:number}>=[];
+    const profileTerms=['နာမည်','အမည်','ကျွန်တော်','ကျွန်မ','ငါ့','အလုပ်','လုပ်ခဲ့','project','စီမံကိန်း','ကိုယ်ရေး','မွေး','နေထိုင်','စိတ်ဝင်စား','ပညာရေး','name','user','profile','work','built','created','developer','owner','project','personal','memories','conversation'];
+    const addWindows=(body:string,name:string,fileId:string)=>{
+     const width=3400,step=2800;
+     for(let pos=0;pos<body.length;pos+=step){
+      const part=body.slice(pos,pos+width);if(!part.trim())continue;
+      const lower=part.toLocaleLowerCase().normalize('NFC');let score=0;
+      for(const term of unique)if(term.length>=2&&lower.includes(term))score+=term.length>=4?3:1;
+      if(asksAboutSelf)for(const term of profileTerms)if(lower.includes(term))score+=2;
+      if(profileName.test(name))score+=asksAboutSelf?35:3;
+      if(score>0)windows.push({score,text:part,name,fileId,pos});
+     }
+    };
     // Backward compatibility: earlier successful builds used the separate
     // "myk-guardian-brain" IndexedDB database with a "memories" store.
     // Read it too, otherwise old Brain imports silently look empty in AMARA's new DB.
@@ -168,20 +182,7 @@ async function brainContext(query:string):Promise<string>{
       if(body.trim())addWindows(title+'\\n'+body,'Legacy Brain · '+title,String(item.id||title));
      }
     } catch(e){console.warn('Legacy Brain memory read skipped',e);}
-    const profileName=/(myk.?personal.?memory|myk.?ai.?memory|memory.?merged|merged.?memory|personal.?memory|profile|ကိုယ်ရေး|personal.?data|user.?memory|gemini.?export|memory|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
-    const windows:Array<{score:number;text:string;name:string;fileId:string;pos:number}>=[];
-    const profileTerms=['နာမည်','အမည်','ကျွန်တော်','ကျွန်မ','ငါ့','အလုပ်','လုပ်ခဲ့','project','စီမံကိန်း','ကိုယ်ရေး','မွေး','နေထိုင်','စိတ်ဝင်စား','ပညာရေး','name','user','profile','work','built','created','developer','owner','project','personal','memories','conversation'];
-    const addWindows=(body:string,name:string,fileId:string)=>{
-     const width=3400,step=2800;
-     for(let pos=0;pos<body.length;pos+=step){
-      const part=body.slice(pos,pos+width);if(!part.trim())continue;
-      const lower=part.toLocaleLowerCase().normalize('NFC');let score=0;
-      for(const term of unique)if(term.length>=2&&lower.includes(term))score+=term.length>=4?3:1;
-      if(asksAboutSelf)for(const term of profileTerms)if(lower.includes(term))score+=2;
-      if(profileName.test(name))score+=asksAboutSelf?35:3;
-      if(score>0)windows.push({score,text:part,name,fileId,pos});
-     }
-    };
+
     // Search indexed chunks from every readable text file, not only files with a particular name.
     for(const chunk of chunks){
      const fileId=String(chunk.fileId||''),file=fileById.get(fileId);
