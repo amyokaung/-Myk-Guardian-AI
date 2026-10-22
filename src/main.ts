@@ -373,6 +373,7 @@ async function askAI() {
       const chatMessages = [{ role: 'system', content: systemPrompt }, ...history.map(m => ({ role: m.role, content: m.content }))];
       let response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers, body: JSON.stringify({ model, messages: chatMessages, tools: OPENROUTER_TOOLS, tool_choice: 'auto', temperature: 0.4, max_tokens: 900 }) });
       let data = await response.json();
+      if(response.ok) recordOpenRouterUsage(model,data);
       // Some OpenRouter models do not support function/tool calling. Retry plain chat for those models.
       const firstError = String(data?.error?.message || '');
       if (!response.ok && response.status === 400 && /tool|function|unsupported|not support/i.test(firstError)) {
