@@ -472,7 +472,9 @@ function renderSettings(view: HTMLElement) {
       <label for="provider">AI Provider</label><select id="provider"><option value="openrouter" ${provider==='openrouter'?'selected':''}>OpenRouter (GPT နှင့် အခြား Models)</option><option value="gemini" ${provider==='gemini'?'selected':''}>Google Gemini API</option></select>
       <p class="muted">Provider တစ်ခုရွေးပြီး သက်ဆိုင်ရာ API Key ထည့်ပါ။ API Key ကို ဒီဖုန်းရဲ့ localStorage ထဲမှာ သိမ်းပါတယ်။</p>
       <label for="apiKey">OpenRouter API Key</label><input id="apiKey" type="password" autocomplete="off" placeholder="sk-or-v1-…" value="${esc(key)}">
-      <label for="modelId">OpenRouter Model ID</label><input id="modelId" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><small>ဥပမာ openai/gpt-4o-mini — OpenRouter မှာ ရရှိနိုင်မှုနဲ့ ကုန်ကျစရိတ်ကို စစ်ပါ။</small>
+      <label for="modelId">OpenRouter Model ID</label><input id="modelId" list="openRouterModelList" value="${esc(model)}" placeholder="openai/gpt-4o-mini"><datalist id="openRouterModelList"></datalist><small>OpenRouter က လက်ရှိပံ့ပိုးထားတဲ့ Model ID မည်သည့်တစ်ခုကိုမဆို ရွေးနိုင်/ကိုယ်တိုင်ရိုက်နိုင်ပါတယ်။</small>
+      <button class="secondary wide" id="loadOpenRouterModels" type="button">OpenRouter မှ ရရှိနိုင်သော Model အားလုံးကို တင်မယ်</button>
+      <label for="availableOpenRouterModels">ရရှိနိုင်သော Model များ</label><select id="availableOpenRouterModels"><option value="">Model စာရင်းမတင်ရသေးပါ</option></select><small id="modelLoadStatus" class="muted">Model စာရင်းရယူရန် API Key ထည့်ပြီး ခလုတ်နှိပ်ပါ။</small>
       <hr>
       <label for="geminiKey">Gemini API Key</label><input id="geminiKey" type="password" autocomplete="off" placeholder="Gemini API Key" value="${esc(geminiKey)}">
       <label for="geminiModel">Gemini Model ID</label><input id="geminiModel" value="${esc(geminiModel)}" placeholder="gemini-2.5-flash">
@@ -496,6 +498,30 @@ function renderSettings(view: HTMLElement) {
     if (gm) localStorage.setItem(GEMINI_MODEL_NAME, gm); else localStorage.setItem(GEMINI_MODEL_NAME, 'gemini-2.5-flash');
     localStorage.setItem(PROVIDER_NAME, p);
     alert('Settings သိမ်းပြီးပါပြီ။ လက်ရှိ Provider: ' + (p === 'gemini' ? 'Gemini' : 'OpenRouter')); render();
+  });
+  view.querySelector<HTMLButtonElement>('#loadOpenRouterModels')!.addEventListener('click', async () => {
+    const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
+    const status = view.querySelector<HTMLElement>('#modelLoadStatus')!;
+    const select = view.querySelector<HTMLSelectElement>('#availableOpenRouterModels')!;
+    const list = view.querySelector<HTMLDataListElement>('#openRouterModelList')!;
+    if (!k) { status.textContent = 'Model စာရင်းရယူရန် OpenRouter API Key ကို အရင်ထည့်ပါ။'; return; }
+    status.textContent = 'OpenRouter Model စာရင်းကို ရယူနေသည်…';
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/models', { headers: { 'Authorization': 'Bearer ' + k, 'X-Title': 'AMARA AI' } });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error?.message || 'HTTP ' + response.status);
+      const models = (Array.isArray(data?.data) ? data.data : []).filter((m:any)=>typeof m.id==='string' && m.id).sort((a:any,b:any)=>a.id.localeCompare(b.id));
+      if (!models.length) throw new Error('Model စာရင်းအလွတ်ဖြစ်နေသည်။ API Key နှင့် အင်တာနက်ကို စစ်ပါ။');
+      list.innerHTML = models.map((m:any)=>'<option value="'+esc(m.id)+'"></option>').join('');
+      select.innerHTML = '<option value="">Model ရွေးပါ ('+models.length+' ခု)</option>' + models.map((m:any)=>'<option value="'+esc(m.id)+'">'+esc(m.name || m.id)+' · '+esc(m.id)+'</option>').join('');
+      const current = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
+      if (models.some((m:any)=>m.id===current)) select.value = current;
+      status.textContent = models.length+' ခု ရရှိနိုင်သော OpenRouter Model များကို တင်ပြီးပါပြီ။ Model တချို့မှာ key/credits သို့မဟုတ် provider အကန့်အသတ် ရှိနိုင်ပါတယ်။';
+    } catch (e) { status.textContent = 'Model စာရင်း မရပါ: '+(e instanceof Error?e.message:'Unknown error'); }
+  });
+  view.querySelector<HTMLSelectElement>('#availableOpenRouterModels')!.addEventListener('change', (e) => {
+    const id = (e.target as HTMLSelectElement).value;
+    if (id) view.querySelector<HTMLInputElement>('#modelId')!.value = id;
   });
   view.querySelector<HTMLButtonElement>('#showKey')!.addEventListener('click', () => { const i = view.querySelector<HTMLInputElement>('#apiKey')!; i.type = i.type === 'password' ? 'text' : 'password'; });
   view.querySelector<HTMLButtonElement>('#showGeminiKey')!.addEventListener('click', () => { const i = view.querySelector<HTMLInputElement>('#geminiKey')!; i.type = i.type === 'password' ? 'text' : 'password'; });
