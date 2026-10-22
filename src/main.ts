@@ -146,24 +146,28 @@ async function analyzeBrainFile(fileId:string):Promise<{chunks:number;summary:st
  const combined=data.chunks.map((x:any)=>String(x.text||'')).join('');
  // Create bounded overlapping analysis batches. Original chunks remain available for later retrieval.
  const batchChars=12000, summaries:string[]=[];
+ // A large file is first split into deterministic batches. Analyse in bounded groups;
+ // persist progress and stop on API failure rather than claiming the whole file was read.
+ const batches=Math.ceil(combined.length/batchChars);
  for(let pos=0;pos<combined.length;pos+=batchChars){
-  const part=combined.slice(pos,pos+batchChars);
+  const part=combined.slice(pos,pos+batchChars), batchNo=Math.floor(pos/batchChars)+1;
   const response=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'AMARA AI'},body:JSON.stringify({model,messages:[
-   {role:'system',content:'You are AMARA Brain file analyst. Read the supplied source carefully. Extract factual personal profile, names, projects, work history, preferences, dates, decisions and relationships. Preserve original language and exact names. Do not invent facts. Return concise Burmese bullet points and retain searchable keywords. If the source is JSON, interpret its structure and values. State if this segment contains no useful facts.'},
-   {role:'user',content:'ဖိုင်: '+data.file.name+'\nစာသားအပိုင်း '+(summaries.length+1)+'\n'+part}
-  ],temperature:0.1,max_tokens:1000})});
+   {role:'system',content:'မင်းက အမရာ (AMARA) ဖြစ်တယ်။ နွေးထွေးပြီး သဘာဝကျတဲ့ မြန်မာစကားပြောပုံစံနဲ့ အချက်အလက်ကို တိတိကျကျ ကောက်နုတ်ပါ။ ဤစာသားအပိုင်းထဲက လူအမည်၊ အသုံးပြုသူအကြောင်း၊ လုပ်ခဲ့သောအလုပ်၊ project၊ ဆုံးဖြတ်ချက်၊ စိတ်ကြိုက်နှင့် ရက်စွဲတွေကို အချက်အလက်အဖြစ်သာ ထုတ်ယူပါ။ မပါသောအချက် မတီထွင်ပါနှင့်။ JSON ရဲ့ key/value နှစ်ခုလုံးကို အဓိပ္ပာယ်ဖော်ပါ။ နောက်ပိုင်း Chat က တိုက်ရိုက်ပြန်ဖြေနိုင်အောင် အရေးကြီးသော အချက်တစ်ချက်စီကို သီးခြား bullet အဖြစ် ထုတ်ပါ။'},
+   {role:'user',content:'ဖိုင်: '+data.file.name+'\nအပိုင်း '+batchNo+'/'+batches+'\n'+part}
+  ],temperature:0.1,max_tokens:1200})});
   const json=await response.json();
-  if(!response.ok)throw new Error(String(json?.error?.message||'OpenRouter HTTP '+response.status));
+  if(!response.ok)throw new Error('အပိုင်း '+batchNo+'/'+batches+' တွင် API အမှား: '+String(json?.error?.message||'HTTP '+response.status));
   const summary=String(json?.choices?.[0]?.message?.content||'').trim();
-  if(summary)summaries.push(summary);
-  // Save each completed analysis immediately so interruption does not lose all progress.
-  const db=await brainDB();
-  await new Promise<void>((resolve,reject)=>{
-   const tx=db.transaction('chunks','readwrite');
-   tx.objectStore('chunks').put({id:fileId+':analysis:'+summaries.length,fileId,fileName:String(data.file.name)+' · AI ခွဲခြမ်းစိတ်ဖြာချက်',text:'ဖိုင်အမည်: '+data.file.name+'\nအပိုင်း: '+(summaries.length)+'\n'+summary});
-   tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);
-  });
-  db.close();
+  if(summary){
+   summaries.push(summary);
+   const db=await brainDB();
+   await new Promise<void>((resolve,reject)=>{
+    const tx=db.transaction('chunks','readwrite');
+    tx.objectStore('chunks').put({id:fileId+':analysis:'+String(batchNo).padStart(8,'0'),fileId,fileName:String(data.file.name)+' · AI ခွဲခြမ်းစိတ်ဖြာချက်',text:'ဖိုင်အမည်: '+data.file.name+'\nအပိုင်း: '+batchNo+'/'+batches+'\n'+summary});
+    tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);
+   });
+   db.close();
+  }
  }
  return {chunks:data.chunks.length,summary:summaries.join('\n\n')};
 }
