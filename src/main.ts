@@ -147,6 +147,27 @@ async function brainContext(query:string):Promise<string>{
    if(failed)return;
    try{
     const fileById=new Map<string,any>(files.map(f=>[String(f.id),f]));
+    // Backward compatibility: earlier successful builds used the separate
+    // "myk-guardian-brain" IndexedDB database with a "memories" store.
+    // Read it too, otherwise old Brain imports silently look empty in AMARA's new DB.
+    try {
+     const legacyItems:any[]=await new Promise((resolve,reject)=>{
+      const request=indexedDB.open('myk-guardian-brain');
+      request.onerror=()=>reject(request.error);
+      request.onsuccess=()=>{
+       const legacyDb=request.result;
+       if(!legacyDb.objectStoreNames.contains('memories')){legacyDb.close();resolve([]);return;}
+       const read=legacyDb.transaction('memories','readonly').objectStore('memories').getAll();
+       read.onsuccess=()=>{legacyDb.close();resolve(Array.isArray(read.result)?read.result:[]);};
+       read.onerror=()=>{legacyDb.close();reject(read.error);};
+      };
+     });
+     for(const item of legacyItems){
+      const title=String(item.title||item.name||'Brain memory');
+      const body=String(item.content||item.text||item.summary||'');
+      if(body.trim())addWindows(title+'\\n'+body,'Legacy Brain · '+title,String(item.id||title));
+     }
+    } catch(e){console.warn('Legacy Brain memory read skipped',e);}
     const profileName=/(myk.?personal.?memory|myk.?ai.?memory|memory.?merged|merged.?memory|personal.?memory|profile|ကိုယ်ရေး|personal.?data|user.?memory|gemini.?export|memory|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
     const windows:Array<{score:number;text:string;name:string;fileId:string;pos:number}>=[];
     const profileTerms=['နာမည်','အမည်','ကျွန်တော်','ကျွန်မ','ငါ့','အလုပ်','လုပ်ခဲ့','project','စီမံကိန်း','ကိုယ်ရေး','မွေး','နေထိုင်','စိတ်ဝင်စား','ပညာရေး','name','user','profile','work','built','created','developer','owner','project','personal','memories','conversation'];
