@@ -127,6 +127,46 @@ async function saveBrainFile(file:File,progress:(p:number)=>void):Promise<void>{
  if(isText&&file.size){const reader=file.stream().getReader(),decoder=new TextDecoder();let buf='',idx=0,read=0;try{while(true){const x=await reader.read();if(x.done)break;buf+=decoder.decode(x.value,{stream:true});read+=x.value.byteLength;while(buf.length>=65536){const chunk=buf.slice(0,65536);buf=buf.slice(65536);await new Promise<void>((ok,no)=>{const t=d.transaction('chunks','readwrite');t.objectStore('chunks').put({id:id+':'+idx++,fileId:id,fileName:file.name,text:chunk});t.oncomplete=()=>ok();t.onerror=()=>no(t.error);});}progress(Math.min(.98,read/Math.max(file.size,1)));}buf+=decoder.decode();if(buf)await new Promise<void>((ok,no)=>{const t=d.transaction('chunks','readwrite');t.objectStore('chunks').put({id:id+':'+idx,fileId:id,fileName:file.name,text:buf});t.oncomplete=()=>ok();t.onerror=()=>no(t.error);});}finally{reader.releaseLock();}}
  d.close();progress(1);
 }
+async function analyzeBrainFile(fileId:string):Promise<{chunks:number;summary:string}>{
+ const key=localStorage.getItem(KEY_NAME)?.trim();
+ if(!key)throw new Error('Brain ဖိုင်ကို သိမ်းထားပြီးပါပြီ။ AI ခွဲခြမ်းစိတ်ဖြာရန် Settings ထဲမှာ OpenRouter API Key ထည့်ပါ။');
+ const d=await brainDB();
+ const data=await new Promise<{file:any;chunks:any[]}>( (resolve,reject)=>{
+  const tx=d.transaction(['files','chunks'],'readonly');
+  const fq=tx.objectStore('files').get(fileId),cq=tx.objectStore('chunks').getAll();
+  let file:any,all:any[]=[];
+  fq.onsuccess=()=>{file=fq.result;};
+  cq.onsuccess=()=>{all=(cq.result||[]).filter((x:any)=>String(x.fileId)===fileId).sort((a:any,b:any)=>String(a.id).localeCompare(String(b.id)));};
+  tx.oncomplete=()=>{d.close();resolve({file,chunks:all});};
+  tx.onerror=()=>{d.close();reject(tx.error);};
+ });
+ if(!data.file)throw new Error('Brain ဖိုင်ကို မတွေ့ပါ။');
+ if(!data.chunks.length)throw new Error('ဒီဖိုင်မှ စာသားမထုတ်ယူနိုင်သေးပါ။ TXT, JSON, MD ကဲ့သို့ စာသားဖိုင်ကို အသုံးပြုပါ။');
+ const model=localStorage.getItem(MODEL_NAME)||DEFAULT_MODEL;
+ const combined=data.chunks.map((x:any)=>String(x.text||'')).join('');
+ // Create bounded overlapping analysis batches. Original chunks remain available for later retrieval.
+ const batchChars=12000, summaries:string[]=[];
+ for(let pos=0;pos<combined.length;pos+=batchChars){
+  const part=combined.slice(pos,pos+batchChars);
+  const response=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json','X-Title':'AMARA AI'},body:JSON.stringify({model,messages:[
+   {role:'system',content:'You are AMARA Brain file analyst. Read the supplied source carefully. Extract factual personal profile, names, projects, work history, preferences, dates, decisions and relationships. Preserve original language and exact names. Do not invent facts. Return concise Burmese bullet points and retain searchable keywords. If the source is JSON, interpret its structure and values. State if this segment contains no useful facts.'},
+   {role:'user',content:'ဖိုင်: '+data.file.name+'\nစာသားအပိုင်း '+(summaries.length+1)+'\n'+part}
+  ],temperature:0.1,max_tokens:1000})});
+  const json=await response.json();
+  if(!response.ok)throw new Error(String(json?.error?.message||'OpenRouter HTTP '+response.status));
+  const summary=String(json?.choices?.[0]?.message?.content||'').trim();
+  if(summary)summaries.push(summary);
+  // Save each completed analysis immediately so interruption does not lose all progress.
+  const db=await brainDB();
+  await new Promise<void>((resolve,reject)=>{
+   const tx=db.transaction('chunks','readwrite');
+   tx.objectStore('chunks').put({id:fileId+':analysis:'+summaries.length,fileId,fileName:String(data.file.name)+' · AI ခွဲခြမ်းစိတ်ဖြာချက်',text:'ဖိုင်အမည်: '+data.file.name+'\nအပိုင်း: '+(summaries.length)+'\n'+summary});
+   tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+ }
+ return {chunks:data.chunks.length,summary:summaries.join('\n\n')};
+}
 async function brainContext(query:string):Promise<string>{
  const q=query.toLocaleLowerCase().normalize('NFC');
  const asksAboutSelf=/(ငါ့ကို|ငါ့အကြောင်း|ငါဘယ်သူ|ငါ့နာမည်|ငါ့အမည်|ငါ့ရဲ့|ငါ့အချက်အလက်|မသိသေးဘူး|မသိဘူး|မင်းငါ့ကို|ငါ့ကိုသိ|မှတ်မိ|သိလား|ဘယ်သူလဲ|ကိုယ့်အကြောင်း|ကိုယ့်အကြောင်း|မှတ်ဉာဏ်|မှတ်ညဏ်|မှတ်ဉာဏ်ကို|မှတ်ညဏ်ကို|မှတ်ဉာဏ်ထဲ|မှတ်ညဏ်ထဲ|brain|memory|about me|who am i|my name|remember me|do you know me)/i.test(q);
