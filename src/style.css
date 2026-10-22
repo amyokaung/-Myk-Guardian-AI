@@ -110,3 +110,13 @@ body.drawer-open{overflow:hidden}
 @keyframes energySpin{to{transform:rotate(360deg)}}
 @keyframes brainPulse{from{opacity:.8}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.brain-file-orb,.holo-brain.processing:after,.holo-brain.processing .brain-svg{animation:none!important}}
+
+/* Distinct chat message colors: user and AMARA replies must never blend together. */
+.chat-transcript .message.user{align-self:flex-end;text-align:left;width:88%;max-width:88%;margin-left:auto;padding:13px 15px;background:linear-gradient(135deg,#153d58,#27264a)!important;border:1px solid #58d9f45c!important;border-radius:18px 18px 5px 18px!important;color:#f4fbff;box-shadow:0 6px 22px #02061155}
+.chat-transcript .message.assistant{align-self:flex-start;text-align:left;width:94%;max-width:94%;margin-right:auto;padding:13px 15px;background:linear-gradient(135deg,#18243a,#17202b)!important;border:1px solid #a4b8ff36!important;border-left:3px solid #9d9aff!important;border-radius:5px 18px 18px 18px!important;color:#f1f4ff;box-shadow:0 6px 22px #02061133}
+.chat-transcript .message.user .msg-label{color:#72e6ff;opacity:1}
+.chat-transcript .message.assistant .msg-label{color:#c2baff;opacity:1}
+.usage-strip{max-width:720px;width:100%;margin:0 auto 6px;padding:8px 11px;border:1px solid #ffffff14;border-radius:12px;background:#111827b8;color:#8798b5;font:10px/1.7 'Noto Sans Myanmar',sans-serif;overflow-wrap:anywhere}
+.usage-strip b{color:#c5d1e8;font-weight:600}
+.usage-card{margin-top:14px;padding:12px;border:1px solid #78e6f42b;border-radius:13px;background:#101b2a;color:#b6c9e4;font-size:12px;line-height:1.8}
+.usage-card b{color:#8ceafa}
