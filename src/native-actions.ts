@@ -150,9 +150,8 @@ async function currentLocationAnswer(): Promise<string> {
     address = result.address?.trim() || '';
   } catch { /* Coordinates remain useful if reverse geocoding is unavailable. */ }
   const coords = position.coords.latitude.toFixed(5) + ', ' + position.coords.longitude.toFixed(5);
-  const mapUrl = 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(coords);
-  return (address ? 'လက်ရှိတည်နေရာ: ' + address : 'လိပ်စာကို အလိုအလျောက် မဖော်ထုတ်နိုင်သေးပါ။ GPS တည်နေရာ') +
-    '\nCoordinates: ' + coords + '\nမြေပုံ: ' + mapUrl;
+  return (address ? '📍 လက်ရှိတည်နေရာ: ' + address : '📍 လိပ်စာကို အလိုအလျောက် မဖော်ထုတ်နိုင်သေးပါ။ GPS တည်နေရာကို မြေပုံပေါ်မှာ ပြထားပါတယ်။') +
+    '\nCoordinates: ' + coords + '\n[[AMARA_MAP:current|' + coords + '|]]';
 }
 
 function parseAlarmTime(command: string): { hour: number; minute: number } | null {
@@ -194,6 +193,18 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
     /(?:^(?:(?:ငါ|ကျွန်တော်|ကျွန်မ|ကျွန်ုပ်)\\s*)?(?:(?:အခု|ယခု|လက်ရှိ)\\s*)?(?:ဘယ်(?:နေရာ)?(?:မှာ)?\\s*(?:ရောက်|ရှိ|နေလဲ)|ဘယ်ရောက်(?:နေလဲ|နေတာလဲ|လဲ)?)(?:ပါ)?[။.!?]*$)/i.test(text) ||
     /(?:where\\s+am\\s+i(?:\\s+now)?|my\\s+current\\s+location|show\\s+my\\s+location|လက်ရှိတည်နေရာ|တည်နေရာကို\\s*(?:ပြော|ပြ)|ငါ့?\\s*တည်နေရာ)/i.test(text);
   if (asksCurrentLocation) return currentLocationAnswer();
+
+  // Distance/directions requests: Google Maps computes the current route, distance and ETA.
+  const asksDistance = /(?:ဘယ်လောက်ဝေး|အကွာအဝေး|ဘယ်လောက်ကြာ|လမ်းကြောင်း|လမ်းညွှန်|how far|distance to|directions to|navigate to|how long to get)/i.test(text);
+  const destination = placeQueryFromCommand(text.replace(/(?:ငါနဲ့|ကျွန်တော်နဲ့|ကျွန်မနဲ့|ငါ့နေရာကနေ|လက်ရှိနေရာကနေ|ငါဘယ်လောက်ဝေး|ဘယ်လောက်ဝေးသေးလဲ|ဘယ်လောက်ဝေးလဲ|ဘယ်လောက်ကြာမလဲ|အကွာအဝေးကို|အကွာအဝေး|လမ်းညွှန်ပေးပါ|လမ်းညွှန်ပေး|လမ်းကြောင်းပြပေး|how far is it to|how far to|distance to|directions to|navigate to|how long to get to)/ig,''));
+  if (asksDistance && destination.length >= 2) {
+    let permission = await Geolocation.checkPermissions();
+    if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') permission = await Geolocation.requestPermissions();
+    if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('ကိုယ့်တည်နေရာကနေ အကွာအဝေးတွက်ဖို့ Location ခွင့်ပြုချက်လိုပါတယ်နော်။');
+    const pos = await Geolocation.getCurrentPosition({enableHighAccuracy:true,timeout:18000,maximumAge:0});
+    const origin = pos.coords.latitude.toFixed(5)+', '+pos.coords.longitude.toFixed(5);
+    return '🗺️ “'+destination+'” ကို သင့်လက်ရှိတည်နေရာကနေ ဘယ်လောက်ဝေးလဲ၊ ဘယ်လောက်ကြာမလဲဆိုတာ Google Maps က လက်ရှိလမ်းကြောင်းအတိုင်းတွက်ပေးနိုင်ပါတယ်။\n[[AMARA_MAP:route|'+origin+'|'+destination+']]';
+  }
 
   // Give a clearly named app priority over general AI intent classification.
   // Keep song-search requests available to the existing music flow.
