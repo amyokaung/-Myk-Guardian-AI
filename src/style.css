@@ -128,3 +128,6 @@ body.drawer-open{overflow:hidden}
 .location-map-link{display:block;padding:12px 14px;color:#8ce8ff!important;text-decoration:none!important;font-weight:650;border-top:1px solid rgba(91,203,224,.2)}
 .location-map-link:active{background:rgba(91,203,224,.1)}
 @media(max-width:480px){.location-map-card iframe{height:220px}}
+
+/* AMARA background wake-word control in Settings */
+.wake-settings-card{border-color:#67eaf644;background:linear-gradient(135deg,#11243aee,#18152fee);padding:18px;margin:14px 0}.wake-settings-card .card-title{font-size:15px;color:#dffcff;margin-bottom:8px}.wake-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0;padding:14px;border:1px solid #76e9f52b;border-radius:14px;background:#08101dbb}.wake-toggle-row>div{display:flex;flex-direction:column;gap:5px}.wake-toggle-row b{font-size:13px;color:#e8f6ff}.wake-toggle-row small{font-size:10px;line-height:1.7;color:#8b9ab8}.wake-toggle-row button{min-width:92px;min-height:42px;border:1px solid #72f1e566;border-radius:12px;background:linear-gradient(135deg,#68e9d5,#79d7ff);color:#071522;font-weight:800}.wake-toggle-row button.danger{background:linear-gradient(135deg,#ff9baf,#ffcf9c);border-color:#ffb1a966}.wake-toggle-row button:disabled{opacity:.55;cursor:wait}#wakeToggleFeedback{overflow-wrap:anywhere}
