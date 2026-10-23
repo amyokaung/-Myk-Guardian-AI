@@ -134,7 +134,7 @@ class VedariWakeService : Service() {
     }
 
     private fun removeWakePhrase(value: String): String {
-        return Regex("(?:အမရာ(?:ရေ|လေး)?|amara(?:hey)?|ဗေဒါရီ(?:ရေ|လေး)?)[\\s၊,။.!?]*", RegexOption.IGNORE_CASE)
+        return Regex("(?:အမရာ\\s*(?:ရေ|လေး)?|amara\\s*(?:hey)?|ဗေဒါရီ\\s*(?:ရေ|လေး)?)[\\s၊,။.!?]*", RegexOption.IGNORE_CASE)
             .replace(value, "").trim()
     }
 
