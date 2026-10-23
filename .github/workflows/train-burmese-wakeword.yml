@@ -8,8 +8,7 @@ permissions:
 
 jobs:
   train-burmese-wakeword:
-    # CPU runner is enough to validate the pipeline, but full VoxCPM training
-    # may be slow or run out of disk/RAM. This is a smoke-test workflow.
+    # CPU runner validates the pipeline; full VoxCPM training can be slow.
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
@@ -20,17 +19,17 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg espeak-ng libsndfile1 sox
+          sudo apt-get install -y ffmpeg espeak-ng libsndfile1 sox portaudio19-dev
 
       - name: Install LiveKit WakeWord with Burmese TTS backend
         run: |
           python -m pip install --upgrade pip
           python -m pip install "livekit-wakeword[train,eval,export,voxcpm]"
+          livekit-wakeword --help
 
       - name: Prepare model and datasets
         run: livekit-wakeword setup --config wakeword/amara_burmese.yaml
