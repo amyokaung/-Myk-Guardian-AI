@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -554,7 +554,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
   const wakeStatus = view.querySelector<HTMLElement>('#wakeStatus')!;
   const refreshWakeStatus = async () => {
     try {
-      const state = await MykNative.getPendingWakeCommand();
+      const state = await MykNative.getWakeListeningStatus();
       wakeStatus.textContent = state.listening
         ? '✓ အမရာရေကို နားထောင်နေသည်။ အခြား app သုံးနေချိန်လည်း ဆက်လက်နားထောင်ရန် ကြိုးစားမည်။'
         : 'ပိတ်ထားသည်။ စတင်နှိပ်ပြီး Microphone permission ကို ခွင့်ပြုပါ။';
