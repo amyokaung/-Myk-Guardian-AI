@@ -129,11 +129,13 @@ class VedariWakeService : Service() {
     private fun isWakeCommand(value: String): Boolean {
         val normalized = value.lowercase(Locale.ROOT)
             .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
-        return listOf("ဗေဒါရီ", "ဗေဒါရီရေ", "ဗေဒါရီလေး").any { normalized.contains(it) }
+        return listOf("အမရာရေ", "အမရာ", "အမရာလေး", "amara", "amarahey", "ဗေဒါရီရေ", "ဗေဒါရီ", "ဗေဒါရီလေး")
+            .any { normalized.contains(it.lowercase(Locale.ROOT).replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")) }
     }
 
     private fun removeWakePhrase(value: String): String {
-        return Regex("ဗေဒါရီ(?:ရေ|လေး)?\\s*[၊,]?\\s*").replace(value, "").trim()
+        return Regex("(?:အမရာ(?:ရေ|လေး)?|amara(?:hey)?|ဗေဒါရီ(?:ရေ|လေး)?)[\\s၊,။.!?]*", RegexOption.IGNORE_CASE)
+            .replace(value, "").trim()
     }
 
     private fun scheduleRestart() {
@@ -186,8 +188,8 @@ class VedariWakeService : Service() {
         val pending = PendingIntent.getService(this, 2, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("ဗေဒါရီ Voice Assistant")
-            .setContentText("Wake word နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
+            .setContentTitle("AMARA AI Voice Assistant")
+            .setContentText("“အမရာရေ” လို့ခေါ်ပါ။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
             .setOngoing(true)
             .addAction(0, "Stop", pending)
             .build()
@@ -195,7 +197,7 @@ class VedariWakeService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "ဗေဒါရီ Voice Assistant", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "AMARA AI Voice Assistant", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
