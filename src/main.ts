@@ -405,7 +405,8 @@ function renderChat(view: HTMLElement) {
       const actionResult=await tryNativeCommand(text);
       if(actionResult){messages.push({role:'assistant',content:actionResult});try{await saveAutoMemory(userText,actionResult);}catch(e){console.warn('AMARA auto-memory save skipped',e);}busy=false;persistCurrentChat();render();return;}
     } catch(err) {
-      const failure='လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။');messages.push({role:'assistant',content:failure});try{await saveAutoMemory(userText,failure);}catch(e){console.warn('AMARA auto-memory save skipped',e);}\n      busy=false;persistCurrentChat();render();return;
+      const failure='လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။');messages.push({role:'assistant',content:failure});try{await saveAutoMemory(userText,failure);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
+      busy=false;persistCurrentChat();render();return;
     }
     await askAI();
   });
