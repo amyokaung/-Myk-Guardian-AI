@@ -470,6 +470,14 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     @PluginMethod
+    fun getWakeListeningStatus(call: PluginCall) {
+        val prefs = context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
+        val result = JSObject()
+        result.put("listening", prefs.getBoolean(VedariWakeService.ENABLED, false))
+        call.resolve(result)
+    }
+
+    @PluginMethod
     fun getPendingWakeCommand(call: PluginCall) {
         val prefs = context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
         val command = prefs.getString(VedariWakeService.PENDING_COMMAND, "").orEmpty()
