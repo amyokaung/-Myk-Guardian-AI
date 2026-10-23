@@ -474,6 +474,10 @@ class AccessibilityBridgePlugin : Plugin() {
         val prefs = context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
         val result = JSObject()
         result.put("listening", prefs.getBoolean(VedariWakeService.ENABLED, false))
+        result.put("lastStatus", prefs.getString(VedariWakeService.LAST_STATUS, "").orEmpty())
+        result.put("lastDetail", prefs.getString(VedariWakeService.LAST_DETAIL, "").orEmpty())
+        result.put("lastHeard", prefs.getString(VedariWakeService.LAST_HEARD, "").orEmpty())
+        result.put("lastEventAt", prefs.getLong(VedariWakeService.LAST_EVENT_AT, 0L))
         call.resolve(result)
     }
 
