@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -284,6 +284,33 @@ function renderBrain(view: HTMLElement) {
  view.querySelector('#brainBackToChat')?.addEventListener('click',()=>{activeTab='chat';render();});
  void refresh().catch(()=>{status.textContent='Local storage ကို ဖွင့်မရပါ။ ဖုန်း storage ကို စစ်ပါ။';});
 }
+async function consumePendingWakeCommand() {
+  try {
+    const pending = await MykNative.getPendingWakeCommand();
+    if (!pending.command) return;
+    if (pending.command === '__VEDARI_WAKE_ONLY__') {
+      if (activeTab !== 'chat') { activeTab = 'chat'; render(); }
+      messages.push({ role: 'assistant', content: 'ဟုတ်ကဲ့၊ အမရာဒီမှာရှိပါတယ်။ 😊 မင်းခိုင်းချင်တာကို ဆက်ပြောလိုက်နော်။' });
+      persistCurrentChat();
+      if (activeTab === 'chat') render();
+      return;
+    }
+    if (activeTab !== 'chat') { activeTab = 'chat'; render(); }
+    const prompt = document.querySelector<HTMLTextAreaElement>('#prompt');
+    const form = document.querySelector<HTMLFormElement>('#chatForm');
+    if (prompt && form) {
+      prompt.value = pending.command;
+      form.requestSubmit();
+    } else {
+      messages.push({ role: 'user', content: pending.command });
+      activeTab = 'chat';
+      render();
+    }
+  } catch { /* Native wake listener may be unavailable in web preview; normal chat remains usable. */ }
+}
+window.addEventListener('focus', () => { void consumePendingWakeCommand(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void consumePendingWakeCommand(); });
+
 function renderChat(view: HTMLElement) {
   view.innerHTML = '<section class="chat-screen"><div class="chat-title-row"><div><span class="eyebrow">AMARA · PERSONAL CHAT</span><h2>အမရာနဲ့ စကားပြောမယ်</h2></div><span class="pill"><i></i> '+(busy?'THINKING':'READY')+'</span></div><div class="usage-strip" id="usageSummary"></div><div class="chat-transcript" id="chatTranscript"><div class="messages" id="messageList"></div></div><div class="composer-wrap"><div id="pendingFiles" class="pending-files"></div><form id="chatForm" class="composer chatgpt-composer"><button class="composer-icon plus-button" id="attachToggle" type="button" aria-label="Attach image or file">＋</button><textarea id="prompt" rows="1" placeholder="အမရာကို မေးပါ…" aria-label="Message AMARA" '+(busy?'disabled':'')+'></textarea><input id="imagePicker" type="file" accept="image/*" multiple hidden><input id="filePicker" type="file" accept=".txt,.md,.json,.csv,.html,.xml,.pdf,.log,text/*,application/json,application/pdf" multiple hidden><button class="composer-icon mic-button" id="voiceInput" type="button" aria-label="Voice input"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"></path></svg></button><button class="composer-icon send" type="submit" aria-label="Send message" '+(busy?'disabled':'')+'>↑</button></form><div class="composer-hint">အမရာ၏ အဖြေတွင် အမှားပါနိုင်သည်။ အရေးကြီးသောအချက်အလက်များကို စစ်ဆေးပါ။</div></div></section><div class="attach-popover" id="attachPopover" hidden><button type="button" id="chooseImages"><span>▧</span> ပုံရွေးရန်</button><button type="button" id="chooseFiles"><span>↥</span> ဖိုင်ရွေးရန်</button></div>';
   const list=view.querySelector<HTMLElement>('#messageList')!;
@@ -344,6 +371,7 @@ function renderChat(view: HTMLElement) {
     }
     await askAI();
   });
+  void consumePendingWakeCommand();
 }
 const PROVIDER_NAME = 'myk.ai.provider';
 const GEMINI_KEY_NAME = 'myk.gemini.key';
@@ -444,6 +472,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     <div class="card permission-tools">
       <div class="status-row"><div><b>📍 တည်နေရာ (Location)</b><small id="locationStatus">Permission အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="requestLocation">စမ်းသပ်ရန်</button></div>
       <div class="status-row"><div><b>🎙 မိုက်ခရိုဖုန်း (Microphone)</b><small id="micStatus">ခွင့်ပြုချက် မစမ်းရသေးပါ</small></div><button class="secondary" id="requestMic">စမ်းသပ်ရန်</button></div>
+      <div class="status-row"><div><b>✨ “အမရာရေ” အမြဲနားထောင်မှု</b><small id="wakeStatus">အခြေအနေ စစ်ဆေးနေသည်… foreground notification ဖြင့် ထိန်းချုပ်မည်</small></div><div class="inline-actions"><button class="secondary" id="startWake">စတင်</button><button class="secondary" id="stopWake">ရပ်ရန်</button></div></div>
       <div class="status-row"><div><b>📁 ဖိုင်ရွေးချယ်ခြင်း</b><small id="fileStatus">ဖိုင်ကို ဖုန်းထဲတွင်သာ ရွေးချယ်မည်</small></div><button class="secondary" id="chooseFile">ဖိုင်ရွေးရန်</button></div>
       <div class="status-row"><div><b>⌘ Accessibility Service</b><small id="accessibilityStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableAccessibility">Settings ဖွင့်ရန်</button></div>
       <div class="status-row"><div><b>🔔 Notification Access</b><small id="notificationAccessStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="enableNotifications">Settings ဖွင့်ရန်</button></div>
@@ -522,6 +551,39 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     }
   };
   void refreshNativeStatus();
+  const wakeStatus = view.querySelector<HTMLElement>('#wakeStatus')!;
+  const refreshWakeStatus = async () => {
+    try {
+      const state = await MykNative.getPendingWakeCommand();
+      wakeStatus.textContent = state.listening
+        ? '✓ အမရာရေကို နားထောင်နေသည်။ အခြား app သုံးနေချိန်လည်း ဆက်လက်နားထောင်ရန် ကြိုးစားမည်။'
+        : 'ပိတ်ထားသည်။ စတင်နှိပ်ပြီး Microphone permission ကို ခွင့်ပြုပါ။';
+    } catch { wakeStatus.textContent = 'Wake listener အခြေအနေ မရပါ။ APK native integration ကို စစ်ပါ။'; }
+  };
+  void refreshWakeStatus();
+  view.querySelector<HTMLButtonElement>('#startWake')!.addEventListener('click', async () => {
+    const button = view.querySelector<HTMLButtonElement>('#startWake')!;
+    button.disabled = true;
+    wakeStatus.textContent = 'အမရာရေ နားထောင်မှု စတင်နေသည်…';
+    try {
+      const result = await MykNative.startVedariWakeListening();
+      wakeStatus.textContent = result.message || 'နားထောင်မှု စတင်ရန် Android service ကို ခိုင်းပြီးပါပြီ။';
+      await refreshWakeStatus();
+    } catch (err) {
+      wakeStatus.textContent = 'မစတင်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'Microphone permission ကို စစ်ပါ။');
+    } finally { button.disabled = false; }
+  });
+  view.querySelector<HTMLButtonElement>('#stopWake')!.addEventListener('click', async () => {
+    const button = view.querySelector<HTMLButtonElement>('#stopWake')!;
+    button.disabled = true;
+    try {
+      const result = await MykNative.stopVedariWakeListening();
+      wakeStatus.textContent = result.message || 'နားထောင်မှု ရပ်လိုက်ပါပြီ။';
+      await refreshWakeStatus();
+    } catch (err) {
+      wakeStatus.textContent = 'ရပ်မရပါ: ' + (err instanceof Error ? err.message : 'native service error');
+    } finally { button.disabled = false; }
+  });
   // Android Settings ပြီး app ကို ပြန်ဖွင့်လာချိန် OS permission များကို ထပ်စစ်ပါ။
   const onPermissionReturn = () => { if (document.visibilityState === 'visible') void refreshNativeStatus(); };
   document.addEventListener('visibilitychange', onPermissionReturn);
