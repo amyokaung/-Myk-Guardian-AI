@@ -196,7 +196,14 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
 
   // Distance/directions requests: Google Maps computes the current route, distance and ETA.
   const asksDistance = /(?:ဘယ်လောက်ဝေး|အကွာအဝေး|ဘယ်လောက်ကြာ|လမ်းကြောင်း|လမ်းညွှန်|how far|distance to|directions to|navigate to|how long to get)/i.test(text);
-  const destination = placeQueryFromCommand(text.replace(/(?:ငါနဲ့|ကျွန်တော်နဲ့|ကျွန်မနဲ့|ငါ့နေရာကနေ|လက်ရှိနေရာကနေ|ငါဘယ်လောက်ဝေး|ဘယ်လောက်ဝေးသေးလဲ|ဘယ်လောက်ဝေးလဲ|ဘယ်လောက်ကြာမလဲ|အကွာအဝေးကို|အကွာအဝေး|လမ်းညွှန်ပေးပါ|လမ်းညွှန်ပေး|လမ်းကြောင်းပြပေး|how far is it to|how far to|distance to|directions to|navigate to|how long to get to)/ig,''));
+  // Extract the named destination first, before stripping the question wording.
+  // e.g. "ပုဂံနဲ့ငါနဲ့ဘယ်လောက်ဝေးလဲ" must resolve to "ပုဂံ", not a prior chat location.
+  let destinationInput = text
+    .replace(/(?:နဲ့|နှင့်)(?:ငါ|ကျွန်တော်|ကျွန်မ|ကျွန်ုပ်)(?:နဲ့|နှင့်).*$/i, '')
+    .replace(/^(?:ငါ|ကျွန်တော်|ကျွန်မ|ကျွန်ုပ်)(?:နဲ့|နှင့်)\s*/i, '')
+    .replace(/\s*(?:ဘယ်လောက်ဝေး(?:သေး)?လဲ|ဘယ်လောက်ကြာ(?:မလဲ)?|အကွာအဝေး(?:ကို)?|လမ်းကြောင်း(?:ပြ)?|လမ်းညွှန်(?:ပေး(?:ပါ)?)?|how far(?: is it)?(?: to)?|distance to|directions to|navigate to|how long to get to).*$/i, '')
+    .trim();
+  const destination = placeQueryFromCommand(destinationInput).replace(/(?:နဲ့|နှင့်)$/i, '').trim();
   if (asksDistance && destination.length >= 2) {
     let permission = await Geolocation.checkPermissions();
     if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') permission = await Geolocation.requestPermissions();
