@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -321,8 +321,16 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 // SpeechRecognizer can deliver a command while AMARA is already foregrounded; in that case
 // Android may reuse the existing Activity and emit no new focus event. Poll only while visible.
 window.setInterval(() => {
-  if (document.visibilityState === 'visible') void consumePendingWakeCommand();
-}, 1200);
+  if (document.visibilityState !== 'visible') return;
+  void consumePendingWakeCommand();
+  const diagnostic = document.querySelector<HTMLElement>('#wakeToggleFeedback');
+  if (diagnostic) {
+    void MykNative.getWakeListeningStatus().then(state => {
+      const details = [state.lastStatus, state.lastDetail ? 'အသေးစိတ်: ' + state.lastDetail : '', state.lastHeard ? 'ကြားခဲ့သောအသံ: ' + state.lastHeard : ''].filter(Boolean);
+      if (details.length) diagnostic.textContent = details.join(' · ');
+    }).catch(() => {});
+  }
+}, 1500);
 
 function renderChat(view: HTMLElement) {
   view.innerHTML = '<section class="chat-screen"><div class="chat-title-row"><div><span class="eyebrow">AMARA · PERSONAL CHAT</span><h2>အမရာနဲ့ စကားပြောမယ်</h2></div><span class="pill"><i></i> '+(busy?'THINKING':'READY')+'</span></div><div class="usage-strip" id="usageSummary"></div><div class="chat-transcript" id="chatTranscript"><div class="messages" id="messageList"></div></div><div class="composer-wrap"><div id="pendingFiles" class="pending-files"></div><form id="chatForm" class="composer chatgpt-composer"><button class="composer-icon plus-button" id="attachToggle" type="button" aria-label="Attach image or file">＋</button><textarea id="prompt" rows="1" placeholder="အမရာကို မေးပါ…" aria-label="Message AMARA" '+(busy?'disabled':'')+'></textarea><input id="imagePicker" type="file" accept="image/*" multiple hidden><input id="filePicker" type="file" accept=".txt,.md,.json,.csv,.html,.xml,.pdf,.log,text/*,application/json,application/pdf" multiple hidden><button class="composer-icon mic-button" id="voiceInput" type="button" aria-label="Voice input"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"></path></svg></button><button class="composer-icon send" type="submit" aria-label="Send message" '+(busy?'disabled':'')+'>↑</button></form><div class="composer-hint">အမရာ၏ အဖြေတွင် အမှားပါနိုင်သည်။ အရေးကြီးသောအချက်အလက်များကို စစ်ဆေးပါ။</div></div></section><div class="attach-popover" id="attachPopover" hidden><button type="button" id="chooseImages"><span>▧</span> ပုံရွေးရန်</button><button type="button" id="chooseFiles"><span>↥</span> ဖိုင်ရွေးရန်</button></div>';
@@ -676,6 +684,8 @@ function renderSettings(view: HTMLElement) {
       wakeToggle.textContent = wakeEnabled ? 'ပိတ်မယ်' : 'ဖွင့်မယ်';
       wakeToggle.classList.toggle('danger', wakeEnabled);
       wakeToggle.setAttribute('aria-pressed', String(wakeEnabled));
+      const details = [state.lastStatus, state.lastDetail ? 'အသေးစိတ်: ' + state.lastDetail : '', state.lastHeard ? 'ကြားခဲ့သောအသံ: ' + state.lastHeard : ''].filter(Boolean);
+      if (details.length) wakeFeedback.textContent = details.join(' · ');
     } catch {
       wakeLabel.textContent = 'Wake Word service မရနိုင်ပါ';
       wakeHint.textContent = 'Native Android integration နှင့် Microphone permission ကို စစ်ပါ။';
