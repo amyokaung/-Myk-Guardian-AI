@@ -161,11 +161,23 @@ async function updateProfileMemory(userText:string):Promise<void>{
 async function exportMemoryBackup():Promise<void>{
  const d=await brainDB();const chunks=await new Promise<any[]>((resolve,reject)=>{const tx=d.transaction('chunks','readonly'),q=tx.objectStore('chunks').getAll();q.onsuccess=()=>resolve(q.result||[]);q.onerror=()=>reject(q.error);});d.close();
  const backup={format:'amara-memory-backup',version:1,exportedAt:new Date().toISOString(),includes:'memory text/chunks and profile records; original imported file binaries are not included',chunks};
- const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='amara-memory-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+ const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='amara-memory-backup-'+new Date().toISOString().slice(0,10)+'.json';document.body.appendChild(a);a.click();a.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1500);
 }
 async function importMemoryBackup(file:File):Promise<number>{
  const parsed=JSON.parse(await file.text());if(!parsed||parsed.format!=='amara-memory-backup'||!Array.isArray(parsed.chunks))throw new Error('AMARA Memory Backup JSON မမှန်ပါ။');
- const d=await brainDB(),prefix='backup-import:'+Date.now()+':',items=parsed.chunks.filter((x:any)=>x&&typeof x.text==='string').map((x:any,i:number)=>({...x,id:prefix+i,fileId:prefix+(String(x.fileId||'memory')),fileName:'Backup · '+String(x.fileName||'Memory'),createdAt:Number(x.createdAt)||Date.now(),importedFromBackup:true}));
+ const d=await brainDB();
+ const existing=await new Promise<any[]>((resolve,reject)=>{const tx=d.transaction('chunks','readonly'),q=tx.objectStore('chunks').getAll();q.onsuccess=()=>resolve(Array.isArray(q.result)?q.result:[]);q.onerror=()=>reject(q.error);});
+ // Idempotent import: re-importing a backup (or an already-known exact text record)
+ // must not create duplicate memory entries. Keep the first existing record and its provenance.
+ const normalize=(v:string)=>String(v||'').normalize('NFKC').replace(/\\s+/g,' ').trim().toLocaleLowerCase();
+ const seen=new Set(existing.map(x=>normalize(x.text)).filter(Boolean));
+ const prefix='backup-import:'+Date.now()+':',items:any[]=[];
+ for(const x of parsed.chunks){
+  if(!x||typeof x.text!=='string'||!x.text.trim())continue;
+  const key=normalize(x.text);if(!key||seen.has(key))continue;
+  seen.add(key);const i=items.length;
+  items.push({...x,id:prefix+i,fileId:prefix+(String(x.fileId||'memory')),fileName:'Backup · '+String(x.fileName||'Memory'),createdAt:Number(x.createdAt)||Date.now(),importedFromBackup:true});
+ }
  await new Promise<void>((resolve,reject)=>{const tx=d.transaction('chunks','readwrite'),store=tx.objectStore('chunks');for(const item of items)store.put(item);tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});d.close();return items.length;
 }
 
@@ -356,7 +368,7 @@ function renderBrain(view: HTMLElement) {
   view.querySelector<HTMLButtonElement>('#exportMemoryBackup')?.addEventListener('click',async()=>{try{await exportMemoryBackup();status.textContent='✓ Memory Backup JSON ထုတ်ပြီးပါပြီ';}catch(e){status.textContent='Backup ထုတ်မရပါ: '+(e instanceof Error?e.message:'Storage error');}});
   const backupPicker=view.querySelector<HTMLInputElement>('#memoryBackupPicker')!;
   view.querySelector<HTMLButtonElement>('#importMemoryBackup')?.addEventListener('click',()=>backupPicker.click());
-  backupPicker.addEventListener('change',async()=>{const file=backupPicker.files?.[0];if(!file)return;try{const count=await importMemoryBackup(file);status.textContent='✓ Backup မှ '+count+' ခုသော memory records ပြန်ထည့်ပြီးပါပြီ';}catch(e){status.textContent='Backup ပြန်ထည့်မရပါ: '+(e instanceof Error?e.message:'Invalid backup');}finally{backupPicker.value='';}});
+  backupPicker.addEventListener('change',async()=>{const file=backupPicker.files?.[0];if(!file)return;try{const count=await importMemoryBackup(file);status.textContent='✓ ထပ်နေသောစာသားများကို ကျော်ပြီး '+count+' ခုသော memory records အသစ် ပြန်ထည့်ပြီးပါပြီ';}catch(e){status.textContent='Backup ပြန်ထည့်မရပါ: '+(e instanceof Error?e.message:'Invalid backup');}finally{backupPicker.value='';}});
  view.querySelector<HTMLButtonElement>('#clearAutoMemory')?.addEventListener('click',async()=>{if(!confirm('AMARA ၏ အလိုအလျောက် စကားပြော/လုပ်ဆောင်ချက်မှတ်ဉာဏ်ကို ဒီဖုန်းမှ ရှင်းလင်းမလား? မူရင်း Chat history နှင့် တင်သွင်းထားသောဖိုင်များကို မဖျက်ပါ။'))return;try{await clearAutoMemory();status.textContent='✓ အလိုအလျောက်မှတ်ဉာဏ်ကို ရှင်းလင်းပြီးပါပြီ';}catch(e){status.textContent='မှတ်ဉာဏ်ရှင်းမရပါ: '+(e instanceof Error?e.message:'Storage error');}});
  brain.addEventListener('click',()=>picker.click());
  picker.addEventListener('change',async()=>{const files=Array.from(picker.files||[]);if(!files.length)return;brain.disabled=true;brain.classList.add('processing');wrap.hidden=false;let done=0,failed=0;
