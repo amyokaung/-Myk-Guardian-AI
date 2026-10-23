@@ -66,3 +66,68 @@ body.drawer-open{overflow:hidden}
 .history-delete{border:0;background:transparent;color:#7f8ba1;font-size:17px;padding:6px}.history-empty{padding:10px;color:#68758e;font-family:'Noto Sans Myanmar',sans-serif;font-size:10px}
 .brain-placeholder{text-align:center;padding:28px 18px}.brain-placeholder-icon{font-size:42px}.brain-placeholder h3{margin:12px 0 4px}
 @media(max-width:420px){.chat-transcript{max-height:calc(100dvh - 230px);padding-left:0;padding-right:0}.chatgpt-composer{gap:4px;padding:7px}.composer-icon{width:32px;height:32px;min-width:32px}.chatgpt-composer .send{width:32px;height:32px;min-width:32px}.plus-button{font-size:25px}.chatgpt-composer textarea{font-size:13px}.composer-hint{font-size:8px}}
+
+
+/* AMARA holographic memory brain */
+.brain-stage{display:flex;flex-direction:column;align-items:center;gap:14px;padding:14px;border:1px solid #58eaff2b;border-radius:24px;background:radial-gradient(ellipse at 50% 44%,#15365c99,transparent 58%),linear-gradient(160deg,#0d172b,#080c18);overflow:hidden;box-shadow:inset 0 0 35px #29cfff09}
+.holo-brain{position:relative;isolation:isolate;width:min(100%,330px);height:290px;display:grid;place-items:center;border:0;background:transparent;color:#dffcff;cursor:pointer;touch-action:manipulation}
+.holo-brain-art{position:relative;z-index:2;font-size:112px;line-height:1;filter:drop-shadow(0 0 8px #4ceaff) drop-shadow(0 0 24px #9675ff);animation:brainHover 3.3s ease-in-out infinite}
+.brain-orbit{position:absolute;left:50%;top:49%;width:230px;height:76px;border:1px solid #5beaff8c;border-radius:50%;transform:translate(-50%,-50%) rotate(-18deg);box-shadow:0 0 18px #4ce8ff25}
+.orbit-b{width:255px;height:98px;border-color:#bc79ff75;transform:translate(-50%,-50%) rotate(28deg)}
+.brain-tap{position:absolute;z-index:3;bottom:10px;padding:10px 15px;border:1px solid #69eaff50;border-radius:30px;background:#0b1728eF;color:#b5f9ff;font-family:'Noto Sans Myanmar',sans-serif;font-size:11px;box-shadow:0 0 25px #39dfff17}
+.brain-status{width:100%;padding:12px;border:1px solid #ffffff12;border-radius:13px;background:#090f1caa;color:#aab9d5;text-align:center;font-family:'Noto Sans Myanmar',sans-serif;font-size:11px;line-height:1.8}
+.brain-progress-wrap{width:100%}.brain-progress-label{display:flex;justify-content:space-between;gap:8px;margin-bottom:8px;color:#a7b6d1;font-family:'Noto Sans Myanmar',sans-serif;font-size:10px}.brain-progress-label b{color:#a8f8ff}
+.brain-progress{height:7px;border-radius:9px;overflow:hidden;background:#ffffff12}.brain-progress span{display:block;width:0;height:100%;border-radius:9px;background:linear-gradient(90deg,#4be7ff,#9e78ff,#ff72d9);box-shadow:0 0 14px #66eaff88;transition:width .12s linear}
+.holo-brain.processing .holo-brain-art{animation:brainHover .7s ease-in-out infinite,brainFlash .5s ease-in-out infinite alternate}
+.holo-brain.processing .brain-orbit{border-color:#ff7be6;box-shadow:0 0 20px #b66bff88;animation:brainSpin 1.8s linear infinite}
+.brain-stage.brain-complete .holo-brain-art{filter:drop-shadow(0 0 13px #4df5ff) drop-shadow(0 0 30px #b578ff);animation:brainHover 2s ease-in-out infinite}
+.brain-library h3{font-size:14px;margin:0 0 7px}.brain-library>p{margin-top:0}
+.brain-file-row{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid #ffffff0d;min-width:0}
+.brain-file-icon{display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border:1px solid #63eaff25;border-radius:11px;background:#172640;color:#81edff;font-size:18px}
+.brain-file-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}.brain-file-copy b{font-size:11px;overflow-wrap:anywhere;color:#e4edff}.brain-file-copy small{font-size:9px;color:#8191b1}
+.brain-check{color:#62f4c5;font-size:17px}
+@keyframes brainHover{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-7px) scale(1.035)}}
+@keyframes brainFlash{from{filter:drop-shadow(0 0 8px #4ceaff)}to{filter:drop-shadow(0 0 24px #ff72df) drop-shadow(0 0 34px #9675ff)}}
+@keyframes brainSpin{to{transform:translate(-50%,-50%) rotate(342deg)}}
+@media(prefers-reduced-motion:reduce){.holo-brain-art,.holo-brain.processing .brain-orbit{animation:none!important}}
+
+
+/* Holographic brain artwork and file-energy effect */
+.brain-stage{position:relative;min-height:390px;padding:20px 12px 16px;background:radial-gradient(ellipse at 50% 48%,#073f79aa 0,transparent 48%),radial-gradient(ellipse at 50% 85%,#3720a333 0,transparent 45%),linear-gradient(165deg,#020b20,#07142d 56%,#020816);border-color:#3b9fff66;box-shadow:inset 0 0 45px #087bff1b,0 0 28px #155aff12}
+.holo-brain{height:320px;width:min(100%,360px);overflow:visible}
+.holo-brain-art{width:250px;height:225px;display:block;filter:drop-shadow(0 0 8px #37dfff) drop-shadow(0 0 22px #396bff);animation:brainHover 3.3s ease-in-out infinite}
+.brain-svg{width:100%;height:100%;overflow:visible}
+.brain-orbit{top:65%;width:260px;height:48px;border:2px solid #42dfffaa;box-shadow:0 0 14px #00d9ff77,inset 0 0 12px #00d9ff2a;transform:translate(-50%,-50%) rotate(-5deg)}
+.orbit-b{top:64%;width:285px;height:72px;border-color:#b34dff9c;transform:translate(-50%,-50%) rotate(12deg)}
+.brain-tap{bottom:0;white-space:nowrap;background:#06112deF;border-color:#4bceff80;box-shadow:0 0 22px #168dff25}
+.brain-file-orbs{position:absolute;inset:10px 0 35px;pointer-events:none;z-index:4}
+.brain-file-orb{position:absolute;display:grid;place-items:center;width:35px;height:35px;border-radius:10px;border:1px solid #70dfff99;background:linear-gradient(145deg,#164b91eF,#160e46f5);color:#aaf5ff;font:700 9px 'DM Mono',monospace;box-shadow:0 0 18px #227bff8c;animation:fileOrbFloat 2.8s ease-in-out infinite}
+.brain-file-orb.orb-0{left:9%;top:20%}.brain-file-orb.orb-1{right:8%;top:17%;border-color:#ff9e64;color:#ffc59e;box-shadow:0 0 18px #ff762b77;animation-delay:-.5s}.brain-file-orb.orb-2{left:2%;top:51%;animation-delay:-1s}.brain-file-orb.orb-3{right:2%;top:48%;border-color:#d88bff;color:#e8b5ff;animation-delay:-1.4s}.brain-file-orb.orb-4{left:17%;top:73%;animation-delay:-.7s}.brain-file-orb.orb-5{right:16%;top:72%;animation-delay:-1.8s}.brain-file-orb.orb-6{left:26%;top:5%;animation-delay:-.3s}.brain-file-orb.orb-7{right:27%;top:4%;animation-delay:-1.2s}
+.holo-brain.processing:after{content:'';position:absolute;z-index:3;inset:28px 30px 52px;border-radius:50%;background:repeating-conic-gradient(from 0deg,transparent 0 8deg,#36eaffb0 9deg 10deg,transparent 11deg 22deg);mask:radial-gradient(circle,transparent 35%,#000 58%,transparent 72%);animation:energySpin 1.4s linear infinite;filter:drop-shadow(0 0 8px #35eaff)}
+.holo-brain.processing .brain-svg{filter:drop-shadow(0 0 12px #65f5ff) drop-shadow(0 0 24px #b74dff);animation:brainPulse .45s ease-in-out infinite alternate}
+.brain-stage.brain-complete{border-color:#51f4d677;box-shadow:inset 0 0 55px #00caff20,0 0 28px #20d9ff16}
+@keyframes fileOrbFloat{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-8px) rotate(4deg)}}
+@keyframes energySpin{to{transform:rotate(360deg)}}
+@keyframes brainPulse{from{opacity:.8}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.brain-file-orb,.holo-brain.processing:after,.holo-brain.processing .brain-svg{animation:none!important}}
+
+/* Distinct chat message colors: user and AMARA replies must never blend together. */
+.chat-transcript .message.user{align-self:flex-end;text-align:left;width:88%;max-width:88%;margin-left:auto;padding:13px 15px;background:linear-gradient(135deg,#153d58,#27264a)!important;border:1px solid #58d9f45c!important;border-radius:18px 18px 5px 18px!important;color:#f4fbff;box-shadow:0 6px 22px #02061155}
+.chat-transcript .message.assistant{align-self:flex-start;text-align:left;width:94%;max-width:94%;margin-right:auto;padding:13px 15px;background:linear-gradient(135deg,#18243a,#17202b)!important;border:1px solid #a4b8ff36!important;border-left:3px solid #9d9aff!important;border-radius:5px 18px 18px 18px!important;color:#f1f4ff;box-shadow:0 6px 22px #02061133}
+.chat-transcript .message.user .msg-label{color:#72e6ff;opacity:1}
+.chat-transcript .message.assistant .msg-label{color:#c2baff;opacity:1}
+.usage-strip{max-width:720px;width:100%;margin:0 auto 6px;padding:8px 11px;border:1px solid #ffffff14;border-radius:12px;background:#111827b8;color:#8798b5;font:10px/1.7 'Noto Sans Myanmar',sans-serif;overflow-wrap:anywhere}
+.usage-strip b{color:#c5d1e8;font-weight:600}
+.usage-card{margin-top:14px;padding:12px;border:1px solid #78e6f42b;border-radius:13px;background:#101b2a;color:#b6c9e4;font-size:12px;line-height:1.8}
+.usage-card b{color:#8ceafa}
+
+
+/* Inline Google Maps cards for location-aware answers */
+.location-map-card{margin:12px 0;border:1px solid rgba(91,203,224,.35);border-radius:16px;overflow:hidden;background:rgba(11,19,37,.8);box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.location-map-card iframe{display:block;width:100%;height:260px;border:0;background:#101827}
+.location-map-link{display:block;padding:12px 14px;color:#8ce8ff!important;text-decoration:none!important;font-weight:650;border-top:1px solid rgba(91,203,224,.2)}
+.location-map-link:active{background:rgba(91,203,224,.1)}
+@media(max-width:480px){.location-map-card iframe{height:220px}}
+
+/* AMARA background wake-word control in Settings */
+.wake-settings-card{border-color:#67eaf644;background:linear-gradient(135deg,#11243aee,#18152fee);padding:18px;margin:14px 0}.wake-settings-card .card-title{font-size:15px;color:#dffcff;margin-bottom:8px}.wake-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:14px 0;padding:14px;border:1px solid #76e9f52b;border-radius:14px;background:#08101dbb}.wake-toggle-row>div{display:flex;flex-direction:column;gap:5px}.wake-toggle-row b{font-size:13px;color:#e8f6ff}.wake-toggle-row small{font-size:10px;line-height:1.7;color:#8b9ab8}.wake-toggle-row button{min-width:92px;min-height:42px;border:1px solid #72f1e566;border-radius:12px;background:linear-gradient(135deg,#68e9d5,#79d7ff);color:#071522;font-weight:800}.wake-toggle-row button.danger{background:linear-gradient(135deg,#ff9baf,#ffcf9c);border-color:#ffb1a966}.wake-toggle-row button:disabled{opacity:.55;cursor:wait}#wakeToggleFeedback{overflow-wrap:anywhere}

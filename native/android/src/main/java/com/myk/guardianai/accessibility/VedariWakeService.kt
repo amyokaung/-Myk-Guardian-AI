@@ -68,34 +68,60 @@ class VedariWakeService : Service() {
         if (recognizer == null) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext).also { speech ->
                 speech.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: android.os.Bundle?) { restarting = false }
-                    override fun onBeginningOfSpeech() = Unit
+                    override fun onReadyForSpeech(params: android.os.Bundle?) {
+                        restarting = false
+                        recordDiagnostic("နားထောင်နေသည်", "")
+                    }
+                    override fun onBeginningOfSpeech() {
+                        recordDiagnostic("အသံရရှိနေသည်", "")
+                    }
                     override fun onRmsChanged(rmsdB: Float) = Unit
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
-                    override fun onEndOfSpeech() = Unit
-                    override fun onError(error: Int) { scheduleRestart() }
+                    override fun onEndOfSpeech() {
+                        recordDiagnostic("အသံပြီးဆုံးသည်", "")
+                    }
+                    override fun onError(error: Int) {
+                        recordDiagnostic("SpeechRecognizer error", recognitionErrorName(error))
+                        scheduleRestart()
+                    }
                     override fun onResults(results: android.os.Bundle?) {
                         val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                        val heard = candidates.firstOrNull().orEmpty().trim()
+                            .map { it.trim() }.filter { it.isNotBlank() }
+                        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+                        prefs.edit()
+                            .putString(LAST_HEARD, candidates.joinToString(" / ").take(240))
+                            .putLong(LAST_EVENT_AT, System.currentTimeMillis())
+                            .apply()
+                        // Search all alternatives. Burmese ASR often puts the best wake phrase
+                        // in candidate 2 or 3 rather than candidate 1.
+                        val wakeCandidate = candidates.firstOrNull { isWakeCommand(it) }
                         if (awaitingCommand) {
+                            val command = candidates.firstOrNull().orEmpty()
                             awaitingCommand = false
-                            if (heard.isNotBlank()) {
-                                savePendingCommand(heard)
+                            if (command.isNotBlank()) {
+                                savePendingCommand(command)
+                                recordDiagnostic("အမိန့်ရရှိပြီး", command)
                                 wakeScreenBriefly()
-                                openAppWithCommand(heard)
+                                openAppWithCommand(command)
+                            } else {
+                                recordDiagnostic("အမိန့်မကြားရ", "နောက်တစ်ကြိမ် ပြောပါ")
                             }
-                        } else if (isWakeCommand(heard)) {
-                            val command = removeWakePhrase(heard)
+                        } else if (wakeCandidate != null) {
+                            val command = removeWakePhrase(wakeCandidate)
                             wakeScreenBriefly()
                             if (command.isBlank()) {
-                                // Wake phrase alone: open the assistant and keep listening for the next utterance.
+                                // Wake phrase alone: acknowledge, then listen for the next utterance.
                                 awaitingCommand = true
                                 savePendingCommand(WAKE_ONLY_SENTINEL)
+                                recordDiagnostic("Wake word တွေ့ပြီ", wakeCandidate)
                                 openAppWithCommand(WAKE_ONLY_SENTINEL)
                             } else {
                                 savePendingCommand(command)
+                                recordDiagnostic("Wake word + အမိန့်တွေ့ပြီ", command)
                                 openAppWithCommand(command)
                             }
+                        } else {
+                            recordDiagnostic("Wake word မတွေ့ပါ", candidates.firstOrNull().orEmpty())
                         }
                         scheduleRestart()
                     }
@@ -119,6 +145,27 @@ class VedariWakeService : Service() {
         }
     }
 
+    private fun recordDiagnostic(status: String, detail: String) {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putString(LAST_STATUS, status)
+            .putString(LAST_DETAIL, detail.take(240))
+            .putLong(LAST_EVENT_AT, System.currentTimeMillis())
+            .apply()
+    }
+
+    private fun recognitionErrorName(error: Int): String = when (error) {
+        SpeechRecognizer.ERROR_AUDIO -> "AUDIO"
+        SpeechRecognizer.ERROR_CLIENT -> "CLIENT"
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "PERMISSION"
+        SpeechRecognizer.ERROR_NETWORK -> "NETWORK"
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "NETWORK_TIMEOUT"
+        SpeechRecognizer.ERROR_NO_MATCH -> "NO_MATCH"
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "BUSY"
+        SpeechRecognizer.ERROR_SERVER -> "SERVER"
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "SPEECH_TIMEOUT"
+        else -> "ERROR_$error"
+    }
+
     private fun savePendingCommand(command: String) {
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putString(PENDING_COMMAND, command)
@@ -129,11 +176,13 @@ class VedariWakeService : Service() {
     private fun isWakeCommand(value: String): Boolean {
         val normalized = value.lowercase(Locale.ROOT)
             .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
-        return listOf("ဗေဒါရီ", "ဗေဒါရီရေ", "ဗေဒါရီလေး").any { normalized.contains(it) }
+        return listOf("အမရာရေ", "အမရာ", "အမရာလေး", "amara", "amarahey", "ဗေဒါရီရေ", "ဗေဒါရီ", "ဗေဒါရီလေး")
+            .any { normalized.contains(it.lowercase(Locale.ROOT).replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")) }
     }
 
     private fun removeWakePhrase(value: String): String {
-        return Regex("ဗေဒါရီ(?:ရေ|လေး)?\\s*[၊,]?\\s*").replace(value, "").trim()
+        return Regex("(?:အမရာ\\s*(?:ရေ|လေး)?|amara\\s*(?:hey)?|ဗေဒါရီ\\s*(?:ရေ|လေး)?)[\\s၊,။.!?]*", RegexOption.IGNORE_CASE)
+            .replace(value, "").trim()
     }
 
     private fun scheduleRestart() {
@@ -186,8 +235,8 @@ class VedariWakeService : Service() {
         val pending = PendingIntent.getService(this, 2, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("ဗေဒါရီ Voice Assistant")
-            .setContentText("Wake word နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
+            .setContentTitle("AMARA AI Voice Assistant")
+            .setContentText("“အမရာရေ” လို့ခေါ်ပါ။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
             .setOngoing(true)
             .addAction(0, "Stop", pending)
             .build()
@@ -195,7 +244,7 @@ class VedariWakeService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "ဗေဒါရီ Voice Assistant", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "AMARA AI Voice Assistant", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
@@ -218,6 +267,10 @@ class VedariWakeService : Service() {
         const val PENDING_COMMAND = "pending_wake_command"
         const val WAKE_ONLY_SENTINEL = "__VEDARI_WAKE_ONLY__"
         const val PENDING_AT = "pending_wake_at"
+        const val LAST_STATUS = "last_wake_status"
+        const val LAST_DETAIL = "last_wake_detail"
+        const val LAST_HEARD = "last_wake_heard"
+        const val LAST_EVENT_AT = "last_wake_event_at"
         const val CHANNEL_ID = "vedari_wake_channel"
         const val NOTIFICATION_ID = 8402
         const val RESTART_DELAY_MS = 900L

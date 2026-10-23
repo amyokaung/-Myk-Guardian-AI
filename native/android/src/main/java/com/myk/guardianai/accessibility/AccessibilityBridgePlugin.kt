@@ -436,7 +436,7 @@ class AccessibilityBridgePlugin : Plugin() {
     fun startVedariWakeListening(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            call.reject("Wake word နားထောင်ရန် Microphone permission လိုအပ်ပါတယ်။ အရင် Allow လုပ်ပါ။")
+            call.reject("အမရာရေ Wake Word နားထောင်ရန် Microphone permission လိုအပ်ပါတယ်။ အရင် Allow လုပ်ပါ။")
             return
         }
         try {
@@ -447,7 +447,7 @@ class AccessibilityBridgePlugin : Plugin() {
             else context.startService(intent)
             val result = JSObject()
             result.put("success", true)
-            result.put("message", "ဗေဒါရီ Wake Word နားထောင်မှု စတင်လိုက်ပါပြီ။ Notification မှာ Stop လုပ်နိုင်ပါတယ်။")
+            result.put("message", "အမရာရေ Wake Word နားထောင်မှု စတင်ပါပြီ။ Notification မှာ Stop လုပ်နိုင်ပါတယ်။")
             call.resolve(result)
         } catch (error: Exception) {
             call.reject("Wake Word စတင်မရပါ: ${error.message}", error)
@@ -462,11 +462,23 @@ class AccessibilityBridgePlugin : Plugin() {
             context.startService(Intent(context, VedariWakeService::class.java).setAction(VedariWakeService.ACTION_STOP))
             val result = JSObject()
             result.put("success", true)
-            result.put("message", "ဗေဒါရီ Wake Word နားထောင်မှု ရပ်လိုက်ပါပြီ။")
+            result.put("message", "အမရာရေ Wake Word နားထောင်မှု ရပ်လိုက်ပါပြီ။")
             call.resolve(result)
         } catch (error: Exception) {
             call.reject("Wake Word ရပ်မရပါ: ${error.message}", error)
         }
+    }
+
+    @PluginMethod
+    fun getWakeListeningStatus(call: PluginCall) {
+        val prefs = context.getSharedPreferences(VedariWakeService.PREFS, android.content.Context.MODE_PRIVATE)
+        val result = JSObject()
+        result.put("listening", prefs.getBoolean(VedariWakeService.ENABLED, false))
+        result.put("lastStatus", prefs.getString(VedariWakeService.LAST_STATUS, "").orEmpty())
+        result.put("lastDetail", prefs.getString(VedariWakeService.LAST_DETAIL, "").orEmpty())
+        result.put("lastHeard", prefs.getString(VedariWakeService.LAST_HEARD, "").orEmpty())
+        result.put("lastEventAt", prefs.getLong(VedariWakeService.LAST_EVENT_AT, 0L))
+        call.resolve(result)
     }
 
     @PluginMethod
@@ -520,13 +532,17 @@ class AccessibilityBridgePlugin : Plugin() {
      * Back again after the previous app has become foreground.
      */
     private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
-        val hostActivity = activity
         Handler(Looper.getMainLooper()).post {
-            if (!hostActivity.isFinishing && !hostActivity.isDestroyed) {
-                hostActivity.moveTaskToBack(true)
-                Handler(Looper.getMainLooper()).postDelayed({
-                    MyAccessibilityService.instance()?.back()
-                }, 250L)
+            val hostActivity = activity
+            if (hostActivity.isFinishing || hostActivity.isDestroyed) {
+                service.back()
+                return@post
+            }
+            if (service.activeWindowPackageName() == context.packageName) {
+                // AMARA is a single-page app: let the web UI restore its previous tab.
+                bridge?.webView?.evaluateJavascript(
+                    "window.dispatchEvent(new Event('amara-native-back'))", null
+                )
             } else {
                 service.back()
             }
