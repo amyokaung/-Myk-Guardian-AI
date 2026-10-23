@@ -284,7 +284,12 @@ function renderBrain(view: HTMLElement) {
  view.querySelector('#brainBackToChat')?.addEventListener('click',()=>{activeTab='chat';render();});
  void refresh().catch(()=>{status.textContent='Local storage ကို ဖွင့်မရပါ။ ဖုန်း storage ကို စစ်ပါ။';});
 }
+let wakeCommandPollBusy = false;
 async function consumePendingWakeCommand() {
+  // focus, visibilitychange, renderChat and the polling fallback can all fire together.
+  // Serialize reads so the native one-shot command is not consumed by competing callers.
+  if (wakeCommandPollBusy) return;
+  wakeCommandPollBusy = true;
   try {
     const pending = await MykNative.getPendingWakeCommand();
     if (!pending.command) return;
@@ -295,6 +300,8 @@ async function consumePendingWakeCommand() {
       if (activeTab === 'chat') render();
       return;
     }
+    // Make sure a wake command goes through the same form pipeline as a typed command,
+    // so native actions run first instead of merely displaying the recognized words.
     if (activeTab !== 'chat') { activeTab = 'chat'; render(); }
     const prompt = document.querySelector<HTMLTextAreaElement>('#prompt');
     const form = document.querySelector<HTMLFormElement>('#chatForm');
@@ -307,9 +314,15 @@ async function consumePendingWakeCommand() {
       render();
     }
   } catch { /* Native wake listener may be unavailable in web preview; normal chat remains usable. */ }
+  finally { wakeCommandPollBusy = false; }
 }
 window.addEventListener('focus', () => { void consumePendingWakeCommand(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void consumePendingWakeCommand(); });
+// SpeechRecognizer can deliver a command while AMARA is already foregrounded; in that case
+// Android may reuse the existing Activity and emit no new focus event. Poll only while visible.
+window.setInterval(() => {
+  if (document.visibilityState === 'visible') void consumePendingWakeCommand();
+}, 1200);
 
 function renderChat(view: HTMLElement) {
   view.innerHTML = '<section class="chat-screen"><div class="chat-title-row"><div><span class="eyebrow">AMARA · PERSONAL CHAT</span><h2>အမရာနဲ့ စကားပြောမယ်</h2></div><span class="pill"><i></i> '+(busy?'THINKING':'READY')+'</span></div><div class="usage-strip" id="usageSummary"></div><div class="chat-transcript" id="chatTranscript"><div class="messages" id="messageList"></div></div><div class="composer-wrap"><div id="pendingFiles" class="pending-files"></div><form id="chatForm" class="composer chatgpt-composer"><button class="composer-icon plus-button" id="attachToggle" type="button" aria-label="Attach image or file">＋</button><textarea id="prompt" rows="1" placeholder="အမရာကို မေးပါ…" aria-label="Message AMARA" '+(busy?'disabled':'')+'></textarea><input id="imagePicker" type="file" accept="image/*" multiple hidden><input id="filePicker" type="file" accept=".txt,.md,.json,.csv,.html,.xml,.pdf,.log,text/*,application/json,application/pdf" multiple hidden><button class="composer-icon mic-button" id="voiceInput" type="button" aria-label="Voice input"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"></rect><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M9 21h6"></path></svg></button><button class="composer-icon send" type="submit" aria-label="Send message" '+(busy?'disabled':'')+'>↑</button></form><div class="composer-hint">အမရာ၏ အဖြေတွင် အမှားပါနိုင်သည်။ အရေးကြီးသောအချက်အလက်များကို စစ်ဆေးပါ။</div></div></section><div class="attach-popover" id="attachPopover" hidden><button type="button" id="chooseImages"><span>▧</span> ပုံရွေးရန်</button><button type="button" id="chooseFiles"><span>↥</span> ဖိုင်ရွေးရန်</button></div>';
