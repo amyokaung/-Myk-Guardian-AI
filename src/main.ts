@@ -128,6 +128,24 @@ const BRAIN_DB='amara-brain-v1';
 function brainDB():Promise<IDBDatabase>{return new Promise((resolve,reject)=>{const q=indexedDB.open(BRAIN_DB,1);q.onupgradeneeded=()=>{const d=q.result;if(!d.objectStoreNames.contains('files'))d.createObjectStore('files',{keyPath:'id'});if(!d.objectStoreNames.contains('chunks'))d.createObjectStore('chunks',{keyPath:'id'});};q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);});}
 async function brainFiles():Promise<BrainRecord[]>{const d=await brainDB();return new Promise((resolve,reject)=>{const q=d.transaction('files','readonly').objectStore('files').getAll();q.onsuccess=()=>{d.close();resolve((q.result as BrainRecord[]).sort((a,b)=>b.addedAt-a.addedAt));};q.onerror=()=>{d.close();reject(q.error);};});}
 function brainSize(n:number):string{if(!n)return'0 B';const u=['B','KB','MB','GB','TB'];const i=Math.min(Math.floor(Math.log(n)/Math.log(1024)),4);return(n/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i];}
+
+// Keep a durable, on-device episode for each conversation/task. Only relevant excerpts
+// are later retrieved into the model prompt; the complete Brain file contents are not uploaded.
+async function saveAutoMemory(userText:string,assistantText:string):Promise<void>{
+ const user=String(userText||'').trim().slice(0,6000),assistant=String(assistantText||'').trim().slice(0,6000);
+ if(!user&&!assistant)return;
+ const stamp=Date.now(),date=new Date(stamp).toISOString();
+ const id='auto-memory:'+stamp+':'+Math.random().toString(36).slice(2,8);
+ const text='အချိန်: '+date+'\nအသုံးပြုသူ: '+user+'\nအမရာ/လုပ်ဆောင်ချက်ရလဒ်: '+assistant;
+ const d=await brainDB();
+ await new Promise<void>((resolve,reject)=>{const tx=d.transaction('chunks','readwrite');tx.objectStore('chunks').put({id,fileId:'auto-memory',fileName:'AMARA Auto Memory · '+date.slice(0,10),text,createdAt:stamp});tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});
+ d.close();
+}
+async function clearAutoMemory():Promise<void>{
+ const d=await brainDB();
+ await new Promise<void>((resolve,reject)=>{const tx=d.transaction('chunks','readwrite'),store=tx.objectStore('chunks'),q=store.getAll();q.onsuccess=()=>{for(const item of q.result||[])if(String(item.fileId)==='auto-memory')store.delete(item.id);};tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});
+ d.close();
+}
 async function saveBrainFile(file:File,progress:(p:number)=>void):Promise<string>{
  const d=await brainDB(),id=crypto.randomUUID?crypto.randomUUID():'f-'+Date.now()+'-'+Math.random().toString(36).slice(2);
  const isText=/\.(txt|md|json|csv|html?|xml|log|ya?ml|ini|js|ts|py|kt|java|css)$/i.test(file.name)||file.type.startsWith('text/')||file.type==='application/json';
@@ -200,7 +218,7 @@ async function brainContext(query:string):Promise<string>{
    if(failed)return;
    try{
     const fileById=new Map<string,any>(files.map(f=>[String(f.id),f]));
-    const profileName=/(myk.?personal.?memory|myk.?ai.?memory|memory.?merged|merged.?memory|personal.?memory|profile|ကိုယ်ရေး|personal.?data|user.?memory|gemini.?export|memory|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
+    const profileName=/(auto.?memory|conversation.?memory|myk.?personal.?memory|myk.?ai.?memory|memory.?merged|merged.?memory|personal.?memory|profile|ကိုယ်ရေး|personal.?data|user.?memory|gemini.?export|memory|မှတ်ဉာဏ်|မှတ်ညဏ်)/i;
     const windows:Array<{score:number;text:string;name:string;fileId:string;pos:number}>=[];
     const profileTerms=['နာမည်','အမည်','ကျွန်တော်','ကျွန်မ','ငါ့','အလုပ်','လုပ်ခဲ့','project','စီမံကိန်း','ကိုယ်ရေး','မွေး','နေထိုင်','စိတ်ဝင်စား','ပညာရေး','name','user','profile','work','built','created','developer','owner','project','personal','memories','conversation'];
     const addWindows=(body:string,name:string,fileId:string)=>{
@@ -272,12 +290,12 @@ function renderBrain(view: HTMLElement) {
  <section class="brain-stage"><button class="holo-brain" id="brainImport" type="button" aria-label="မှတ်ဉာဏ်ဖိုင်ထည့်ရန်"><span class="brain-orbit"></span><span class="brain-orbit orbit-b"></span><span class="holo-brain-art" aria-hidden="true"><svg class="brain-svg" viewBox="0 0 300 260" role="img" aria-label="Holographic brain"><defs><linearGradient id="brainFill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b9ffff"/><stop offset=".34" stop-color="#37bfff"/><stop offset=".68" stop-color="#4778ff"/><stop offset="1" stop-color="#ed7bff"/></linearGradient><filter id="brainGlow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs><g filter="url(#brainGlow)" stroke="url(#brainFill)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="#1b68e733"><path d="M148 47C132 22 103 27 94 48 68 39 48 59 54 82 30 98 42 124 56 135 43 159 62 179 82 179 88 202 112 209 132 191L148 174Z"/><path d="M152 47C168 22 197 27 206 48 232 39 252 59 246 82 270 98 258 124 244 135 257 159 238 179 218 179 212 202 188 209 168 191L152 174Z"/><path d="M148 48V176M152 48V176" fill="none" stroke="#d9ffff" stroke-width="2"/><path d="M95 49C82 63 103 73 88 87S67 108 82 124 93 149 82 166M119 42C110 58 128 70 113 83S101 106 119 119 119 147 134 158M205 49C218 63 197 73 212 87S233 108 218 124 207 149 218 166M181 42C190 58 172 70 187 83S199 106 181 119 181 147 166 158" fill="none" stroke="#93faff" stroke-width="2.4"/><path d="M128 190L137 208 150 218 163 208 172 190" fill="none" stroke="#7bdfff" stroke-width="3"/><path d="M60 100L76 103 83 93M89 145L110 139 119 150M124 66L136 76 130 91M240 100L224 103 217 93M211 145L190 139 181 150M176 66L164 76 170 91" fill="none" stroke="#e3ffff" stroke-width="2"/></g><g fill="#eaffff"><circle cx="95" cy="49" r="3"/><circle cx="119" cy="42" r="2.5"/><circle cx="205" cy="49" r="3"/><circle cx="181" cy="42" r="2.5"/><circle cx="82" cy="166" r="3"/><circle cx="218" cy="166" r="3"/></g></svg></span><span class="brain-file-orbs" id="brainFileOrbs" aria-hidden="true"></span><span class="brain-tap">＋ Brain ကိုနှိပ်ပြီး ဖိုင်ထည့်ပါ</span></button>
  <div class="brain-status" id="brainStatus">✦ Brain အဆင်သင့်ဖြစ်နေပါပြီ</div><div class="brain-progress-wrap" id="brainProgressWrap" hidden><div class="brain-progress-label"><span id="brainProgressText">အချက်အလက်ထည့်သွင်းနေသည်…</span><b id="brainPercent">0%</b></div><div class="brain-progress"><span id="brainProgress"></span></div></div></section>
  <input id="brainPicker" type="file" multiple hidden />
- <section class="card brain-library"><h3>သိမ်းဆည်းထားသော ဖိုင်များ</h3><p class="muted">App က ဖိုင်အရွယ်အစားကို သီးခြားကန့်သတ်မထားပါ။ ဖုန်း၏ လွတ်နေသော storage နှင့် Android ကန့်သတ်ချက်များတော့ သက်ရောက်နိုင်သည်။</p><div id="brainFiles"><p class="muted">ဖိုင်စာရင်း ဖတ်နေသည်…</p></div></section>
+ <section class="card brain-library"><h3>အမရာ၏ ဆက်လက်လေ့လာမှတ်ဉာဏ်</h3><p class="muted">Chat စကားပြောမှုနှင့် ဖုန်းလုပ်ဆောင်ချက်ရလဒ်များကို ဒီဖုန်းထဲမှာ သိမ်းပြီး နောက်ပိုင်းမေးခွန်း/အလုပ်များတွင် သက်ဆိုင်ရာအပိုင်းကို ပြန်ရှာသုံးမည်။ မှတ်တမ်းများကို API သို့ အလိုအလျောက် အပြည့်အစုံ မပို့ပါ။</p><button class="secondary" id="clearAutoMemory" type="button">စကားပြောမှတ်ဉာဏ် ရှင်းလင်းရန်</button></section><section class="card brain-library"><h3>သိမ်းဆည်းထားသော ဖိုင်များ</h3><p class="muted">App က ဖိုင်အရွယ်အစားကို သီးခြားကန့်သတ်မထားပါ။ ဖုန်း၏ လွတ်နေသော storage နှင့် Android ကန့်သတ်ချက်များတော့ သက်ရောက်နိုင်သည်။</p><div id="brainFiles"><p class="muted">ဖိုင်စာရင်း ဖတ်နေသည်…</p></div></section>
  <div class="card"><b>ဖတ်ရှုမှုအခြေအနေ</b><p class="muted">TXT, MD, JSON, CSV နှင့် text အမျိုးအစားများကို ဖတ်ပြီး AI ရှာဖွေရန် index လုပ်ပေးသည်။ PDF၊ ZIP၊ ပုံ၊ အသံ၊ ဗီဒီယိုတို့ကို လက်ရှိ build တွင် သိမ်းထားနိုင်သော်လည်း အတွင်းစာသားကို အလိုအလျောက် မထုတ်ယူနိုင်သေးပါ။ အဲဒီဖိုင်များကို ဖတ်ပြီးပြီဟု မယူဆပါနှင့်။</p></div>
  <button class="secondary wide" id="brainBackToChat">Chat ကို ပြန်သွားမယ်</button>`;
  const picker=view.querySelector<HTMLInputElement>('#brainPicker')!,brain=view.querySelector<HTMLButtonElement>('#brainImport')!,status=view.querySelector<HTMLElement>('#brainStatus')!,wrap=view.querySelector<HTMLElement>('#brainProgressWrap')!,bar=view.querySelector<HTMLElement>('#brainProgress')!,percent=view.querySelector<HTMLElement>('#brainPercent')!,progressText=view.querySelector<HTMLElement>('#brainProgressText')!;
  const refresh=async()=>{const files=await brainFiles();view.querySelector<HTMLElement>('#brainCount')!.textContent=files.length+' FILES';view.querySelector<HTMLElement>('#brainFiles')!.innerHTML=files.length?files.map(f=>'<div class="brain-file-row"><span class="brain-file-icon">'+(f.extracted?'▤':'◈')+'</span><span class="brain-file-copy"><b>'+esc(f.name)+'</b><small>'+brainSize(f.size)+' · '+(f.extracted?'စာသားဖတ်ပြီး AI ရှာဖွေနိုင်':'ဖိုင်သိမ်းထားသည် · စာသားမဖတ်ရသေး')+'</small></span><span class="brain-check">'+(f.extracted?'✓':'!')+'</span></div>').join(''):'<p class="muted">ဖိုင်မရှိသေးပါ။ ဦးနှောက်ကိုနှိပ်ပြီး ဖိုင်ရွေးပါ။</p>';const orbs=view.querySelector<HTMLElement>('#brainFileOrbs');if(orbs)orbs.innerHTML=files.slice(0,8).map((f,i)=>'<span class="brain-file-orb orb-'+i+'">'+(f.name.toLowerCase().endsWith('.pdf')?'PDF':f.name.toLowerCase().endsWith('.json')?'{}':f.name.toLowerCase().endsWith('.zip')?'ZIP':f.name.toLowerCase().match(/\\.(png|jpe?g|webp)$/)?'IMG':'TXT')+'</span>').join('');};
- brain.addEventListener('click',()=>picker.click());
+ view.querySelector<HTMLButtonElement>('#clearAutoMemory')?.addEventListener('click',async()=>{if(!confirm('AMARA ၏ အလိုအလျောက် စကားပြော/လုပ်ဆောင်ချက်မှတ်ဉာဏ်ကို ဒီဖုန်းမှ ရှင်းလင်းမလား? မူရင်း Chat history နှင့် တင်သွင်းထားသောဖိုင်များကို မဖျက်ပါ။'))return;try{await clearAutoMemory();status.textContent='✓ အလိုအလျောက်မှတ်ဉာဏ်ကို ရှင်းလင်းပြီးပါပြီ';}catch(e){status.textContent='မှတ်ဉာဏ်ရှင်းမရပါ: '+(e instanceof Error?e.message:'Storage error');}});\n brain.addEventListener('click',()=>picker.click());
  picker.addEventListener('change',async()=>{const files=Array.from(picker.files||[]);if(!files.length)return;brain.disabled=true;brain.classList.add('processing');wrap.hidden=false;let done=0,failed=0;
  for(const f of files){status.textContent='⚡ '+f.name+' ကို Brain ထဲ ထည့်သွင်းနေသည်…';progressText.textContent=f.name;bar.style.width='0%';percent.textContent='0%';try{const id=await saveBrainFile(f,p=>{bar.style.width=Math.round(p*100)+'%';percent.textContent=Math.round(p*100)+'%';});done++;await refresh();if(/\\.(txt|md|json|csv|html?|xml|log|ya?ml|ini)$/i.test(f.name)||f.type.startsWith('text/')||f.type==='application/json'){status.textContent='🧠 '+f.name+' ကို AI က ခွဲခြမ်းစိတ်ဖြာနေသည်…';progressText.textContent='AI ခွဲခြမ်းစိတ်ဖြာမှု';try{await analyzeBrainFile(id);status.textContent='✓ '+f.name+' သိမ်းပြီး AI ခွဲခြမ်းစိတ်ဖြာပြီးပါပြီ';}catch(e){status.textContent='ဖိုင်သိမ်းပြီးပါပြီ၊ AI ခွဲခြမ်းစိတ်ဖြာမှု မပြီးပါ: '+(e instanceof Error?e.message:'API error');}}else{status.textContent='ဖိုင်ကို သိမ်းထားပြီးပါပြီ။ ဒီဖိုင်အမျိုးအစားအတွက် စာသားထုတ်ယူမှု မပံ့ပိုးသေးပါ။';}}catch(e){failed++;status.textContent='ဖိုင်သိမ်း/ဖတ်ရှုမှု မအောင်မြင်ပါ: '+(e instanceof Error?e.message:'Storage error');}await refresh();}
  brain.disabled=false;brain.classList.remove('processing');wrap.hidden=true;picker.value='';status.textContent=failed?'ပြီးစီး '+done+' ဖိုင် · မအောင်မြင် '+failed+' ဖိုင်':'✓ '+done+' ဖိုင်၏ အချက်အလက်များ Brain ထဲ ဝင်သွားပါပြီ';view.querySelector('.brain-stage')?.classList.add('brain-complete');});
@@ -385,10 +403,9 @@ function renderChat(view: HTMLElement) {
     messages.push({role:'user',content:userText});persistCurrentChat();busy=true;render();
     try {
       const actionResult=await tryNativeCommand(text);
-      if(actionResult){messages.push({role:'assistant',content:actionResult});busy=false;persistCurrentChat();render();return;}
+      if(actionResult){messages.push({role:'assistant',content:actionResult});try{await saveAutoMemory(userText,actionResult);}catch(e){console.warn('AMARA auto-memory save skipped',e);}busy=false;persistCurrentChat();render();return;}
     } catch(err) {
-      messages.push({role:'assistant',content:'လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။')});
-      busy=false;persistCurrentChat();render();return;
+      const failure='လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။');messages.push({role:'assistant',content:failure});try{await saveAutoMemory(userText,failure);}catch(e){console.warn('AMARA auto-memory save skipped',e);}\n      busy=false;persistCurrentChat();render();return;
     }
     await askAI();
   });
@@ -454,10 +471,9 @@ async function askAI() {
         answer = followData?.choices?.[0]?.message?.content?.trim() || result;
       } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
     }
-    messages.push({ role: 'assistant', content: answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။' });
-    persistCurrentChat();
+    const finalAnswer=answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။';messages.push({ role: 'assistant', content: finalAnswer });\n    try{await saveAutoMemory(history[history.length-1]?.content||'',finalAnswer);}catch(e){console.warn('AMARA auto-memory save skipped',e);}\n    persistCurrentChat();
   } catch (err) {
-    messages.push({ role: 'assistant', content: 'AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။' });
+    const failure='AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။';messages.push({ role: 'assistant', content: failure });try{await saveAutoMemory(history[history.length-1]?.content||'',failure);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
   }
   busy = false; persistCurrentChat(); render();
 }
