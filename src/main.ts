@@ -641,8 +641,52 @@ function renderSettings(view: HTMLElement) {
       <button class="secondary wide" id="showGeminiKey">Gemini Key ပြ/ဖျောက်</button>
       <button class="danger wide" id="deleteKeys">API Key နှစ်ခုလုံး ဖျက်မယ်</button>
     </div>
+     <div class="card wake-settings-card">
+       <div class="card-title">🎙 အမရာရေ — နောက်ခံအသံနားထောင်မှု</div>
+       <p class="muted">ဖွင့်ထားလျှင် AMARA app အပြင်သို့ထွက်ပြီး အခြား app သုံးနေချိန်တွင်လည်း “အမရာရေ” ဟုခေါ်နိုင်ရန် Android foreground microphone service ကို စတင်မည်။ Android က ခွင့်ပြုထားသည့်အတိုင်းသာ အလုပ်လုပ်သည်။</p>
+       <div class="wake-toggle-row"><div><b id="wakeToggleLabel">အခြေအနေ စစ်ဆေးနေသည်…</b><small id="wakeToggleHint">Microphone permission လိုအပ်သည်။</small></div><button class="primary" id="wakeToggle" type="button" aria-pressed="false">စစ်ဆေးနေသည်…</button></div>
+       <p class="muted" id="wakeToggleFeedback" role="status">ဖွင့်ပြီးနောက် app ကို background ထား၍ စမ်းသပ်နိုင်သည်။</p>
+     </div>
     <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
     <div class="card"><div class="card-title">About AMARA AI</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
+  const wakeToggle = view.querySelector<HTMLButtonElement>('#wakeToggle')!;
+  const wakeLabel = view.querySelector<HTMLElement>('#wakeToggleLabel')!;
+  const wakeHint = view.querySelector<HTMLElement>('#wakeToggleHint')!;
+  const wakeFeedback = view.querySelector<HTMLElement>('#wakeToggleFeedback')!;
+  let wakeEnabled = false;
+  const refreshWakeToggle = async () => {
+    try {
+      const state = await MykNative.getWakeListeningStatus();
+      wakeEnabled = !!state.listening;
+      wakeLabel.textContent = wakeEnabled ? 'နောက်ခံနားထောင်မှု ဖွင့်ထားသည်' : 'နောက်ခံနားထောင်မှု ပိတ်ထားသည်';
+      wakeHint.textContent = wakeEnabled ? '“အမရာရေ” ဟုခေါ်ပြီး အမိန့်ဆက်ပြောပါ။' : 'ဖွင့်လိုက်လျှင် app အပြင်မှာလည်း နားထောင်ရန် ကြိုးစားမည်။';
+      wakeToggle.textContent = wakeEnabled ? 'ပိတ်မယ်' : 'ဖွင့်မယ်';
+      wakeToggle.classList.toggle('danger', wakeEnabled);
+      wakeToggle.setAttribute('aria-pressed', String(wakeEnabled));
+    } catch {
+      wakeLabel.textContent = 'Wake Word service မရနိုင်ပါ';
+      wakeHint.textContent = 'Native Android integration နှင့် Microphone permission ကို စစ်ပါ။';
+      wakeToggle.textContent = 'ထပ်စမ်းမယ်';
+      wakeToggle.setAttribute('aria-pressed', 'false');
+    }
+  };
+  void refreshWakeToggle();
+  wakeToggle.addEventListener('click', async () => {
+    wakeToggle.disabled = true;
+    wakeFeedback.textContent = wakeEnabled ? 'နားထောင်မှု ရပ်နေသည်…' : 'Microphone service စတင်နေသည်…';
+    try {
+      if (wakeEnabled) {
+        const result = await MykNative.stopVedariWakeListening();
+        wakeFeedback.textContent = result.message || 'နောက်ခံနားထောင်မှုကို ရပ်လိုက်ပါပြီ။';
+      } else {
+        const result = await MykNative.startVedariWakeListening();
+        wakeFeedback.textContent = result.message || 'နားထောင်မှု စတင်ရန် Android ကို တောင်းဆိုပြီးပါပြီ။';
+      }
+      await refreshWakeToggle();
+    } catch (err) {
+      wakeFeedback.textContent = 'မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'Microphone permission ကို စစ်ပါ။') + ' ဖုန်း Settings > Apps > AMARA AI > Permissions > Microphone ကို Allow လုပ်ထားပါ။';
+    } finally { wakeToggle.disabled = false; }
+  });
   view.querySelector<HTMLButtonElement>('#saveSettings')!.addEventListener('click', () => {
     const k = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
     const m = view.querySelector<HTMLInputElement>('#modelId')!.value.trim();
