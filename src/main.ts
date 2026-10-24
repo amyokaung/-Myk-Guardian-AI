@@ -766,7 +766,14 @@ function renderSettings(view: HTMLElement) {
        <p class="muted">ဖွင့်ထားလျှင် AMARA app အပြင်သို့ထွက်ပြီး အခြား app သုံးနေချိန်တွင်လည်း “အမရာရေ” ဟုခေါ်နိုင်ရန် Android foreground microphone service ကို စတင်မည်။ Android က ခွင့်ပြုထားသည့်အတိုင်းသာ အလုပ်လုပ်သည်။</p>
        <div class="wake-toggle-row"><div><b id="wakeToggleLabel">အခြေအနေ စစ်ဆေးနေသည်…</b><small id="wakeToggleHint">Microphone permission လိုအပ်သည်။</small></div><button class="primary" id="wakeToggle" type="button" aria-pressed="false">စစ်ဆေးနေသည်…</button></div>
        <p class="muted" id="wakeToggleFeedback" role="status">ဖွင့်ပြီးနောက် app ကို background ထား၍ စမ်းသပ်နိုင်သည်။</p>
+       <button class="secondary wide" id="testWakeWord" type="button">Wake Word စမ်းသပ်မယ်</button>
+       <p class="muted" id="wakeTestResult" role="status">စမ်းသပ်ရန် ခလုတ်နှိပ်ပြီး “အမရာရေ” ဟု ပြောပါ။ ရလဒ်ကို ဒီနေရာမှာ ပြပါမယ်။</p>
      </div>
+    <div class="card"><div class="card-title">AI ချိတ်ဆက်မှု စမ်းသပ်ခြင်း</div>
+      <p class="muted">ရွေးထားသော Provider၊ API Key၊ Model နှင့် အင်တာနက်ကို စမ်းသပ်ပါမည်။ အောင်မြင်/မအောင်မြင်နှင့် အကြောင်းရင်းကို ပြပေးမည်။ စမ်းသပ်မှုတွင် API အသုံးပြုခ အနည်းငယ် ဖြစ်နိုင်သည်။</p>
+      <button class="secondary wide" id="testAiConnection" type="button">AI ချိတ်ဆက်မှု စမ်းမယ်</button>
+      <p class="muted" id="aiConnectionResult" role="status">မစမ်းသပ်ရသေးပါ။</p>
+    </div>
     <div class="card"><div class="card-title">ဖုန်း Action များ</div><p class="muted">AI tool calling ဖြင့် App ဖွင့်ခြင်း၊ Back/Home၊ သီချင်း Next/Previous/Play-Pause၊ Volume တိုး/လျှော့၊ Settings ဖွင့်ခြင်းတို့ကို ခွင့်ပြုထားပါတယ်။ Android permission နဲ့ လက်ရှိ Media App ပံ့ပိုးမှုအပေါ် မူတည်ပါတယ်။</p></div>
     <div class="card"><div class="card-title">About AMARA AI</div><p class="muted">Capacitor · TypeScript · Gemini API / OpenRouter · Android native actions</p></div>`;
   const wakeToggle = view.querySelector<HTMLButtonElement>('#wakeToggle')!;
@@ -798,6 +805,76 @@ function renderSettings(view: HTMLElement) {
     }
   };
   void refreshWakeToggle();
+  const wakeTestButton = view.querySelector<HTMLButtonElement>('#testWakeWord')!;
+  const wakeTestResult = view.querySelector<HTMLElement>('#wakeTestResult')!;
+  wakeTestButton.addEventListener('click', async () => {
+    wakeTestButton.disabled = true;
+    wakeTestResult.textContent = 'စမ်းသပ်မှု စတင်ပါပြီ။ ယခု ၈ စက္ကန့်အတွင်း “အမရာရေ” ဟု အသံကျယ်ကျယ် ပြောပါ…';
+    try {
+      const initial = await MykNative.getWakeListeningStatus();
+      if (!initial.listening) {
+        wakeTestResult.textContent = '❌ FAIL — Wake listener မဖွင့်ထားပါ။ အရင် “ဖွင့်မယ်” ကိုနှိပ်ပြီး Microphone permission ကို ခွင့်ပြုပါ။';
+        return;
+      }
+      const before = [initial.lastHeard || '', initial.lastStatus || '', initial.lastDetail || ''].join('|');
+      const started = Date.now();
+      let detected = false;
+      let latest: any = initial;
+      while (Date.now() - started < 8000) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        latest = await MykNative.getWakeListeningStatus();
+        const now = [latest.lastHeard || '', latest.lastStatus || '', latest.lastDetail || ''].join('|');
+        const sentinel = (v: string) => v.includes('__AMARA_WAKE_ONLY__') || v.includes('__VEDARI_WAKE_ONLY__');
+        if (now !== before && [latest.lastHeard, latest.lastStatus, latest.lastDetail].some((v: string) => !!v && !sentinel(v))) { detected = true; break; }
+      }
+      const heard = latest.lastHeard && !String(latest.lastHeard).includes('__AMARA_WAKE_ONLY__') && !String(latest.lastHeard).includes('__VEDARI_WAKE_ONLY__') ? ' ကြားခဲ့သည်: “' + latest.lastHeard + '”' : '';
+      wakeTestResult.textContent = detected
+        ? '✅ PASS — စမ်းသပ်ချိန်အတွင်း Wake service မှ အသံ/အခြေအနေ ပြောင်းလဲမှုကို တွေ့ရှိခဲ့သည်။' + heard + ' (Wake word ကို တကယ်သိရှိကြောင်း သီးခြားအတည်ပြုရန် လိုနိုင်သည်။)'
+        : '❌ FAIL / အတည်မပြုနိုင် — ၈ စက္ကန့်အတွင်း Wake service မှ အသံရလဒ်အသစ် မရခဲ့ပါ။ Microphone permission၊ ဘက်ထရီကန့်သတ်ချက်နှင့် နောက်ခံ service ကို စစ်ပါ။';
+    } catch (err) {
+      wakeTestResult.textContent = '❌ FAIL — Native Wake စမ်းသပ်မှု မအောင်မြင်ပါ: ' + (err instanceof Error ? err.message : 'မသိရှိသောအမှား');
+    } finally { wakeTestButton.disabled = false; }
+  });
+  const aiTestButton = view.querySelector<HTMLButtonElement>('#testAiConnection')!;
+  const aiTestResult = view.querySelector<HTMLElement>('#aiConnectionResult')!;
+  aiTestButton.addEventListener('click', async () => {
+    aiTestButton.disabled = true;
+    aiTestResult.textContent = 'ချိတ်ဆက်မှု စမ်းသပ်နေသည်…';
+    try {
+      const provider = view.querySelector<HTMLSelectElement>('#provider')!.value;
+      let response: Response;
+      let data: any;
+      if (provider === 'gemini') {
+        const key = view.querySelector<HTMLInputElement>('#geminiKey')!.value.trim();
+        const model = view.querySelector<HTMLInputElement>('#geminiModel')!.value.trim() || 'gemini-2.5-flash';
+        if (!key) throw new Error('Gemini API Key မထည့်ရသေးပါ။');
+        response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Reply with exactly: AMARA_CONNECTION_OK' }] }], generationConfig: { temperature: 0, maxOutputTokens: 20 } })
+        });
+        data = await response.json();
+        if (!response.ok) throw new Error(data?.error?.message || 'Gemini HTTP ' + response.status);
+        const reply = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text || '').join('').trim();
+        if (!reply) throw new Error('API ဆက်သွယ်ခဲ့သော်လည်း Model က အဖြေမပြန်ပါ။');
+        aiTestResult.textContent = '✅ PASS — Gemini API ချိတ်ဆက်မှုအောင်မြင်သည်။ Model: ' + model + ' · အဖြေ: ' + reply.slice(0, 100);
+      } else {
+        const key = view.querySelector<HTMLInputElement>('#apiKey')!.value.trim();
+        const model = view.querySelector<HTMLInputElement>('#modelId')!.value.trim() || DEFAULT_MODEL;
+        if (!key) throw new Error('OpenRouter API Key မထည့်ရသေးပါ။');
+        response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST', headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'X-Title': 'AMARA AI connection test' },
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with exactly: AMARA_CONNECTION_OK' }], temperature: 0, max_tokens: 20 })
+        });
+        data = await response.json();
+        if (!response.ok) throw new Error((data?.error?.message || 'OpenRouter HTTP ' + response.status) + ' (HTTP ' + response.status + ')');
+        const reply = data?.choices?.[0]?.message?.content;
+        if (typeof reply !== 'string' || !reply.trim()) throw new Error('API ဆက်သွယ်ခဲ့သော်လည်း Model က စာသားအဖြေမပြန်ပါ။');
+        aiTestResult.textContent = '✅ PASS — OpenRouter API ချိတ်ဆက်မှုအောင်မြင်သည်။ Model: ' + model + ' · အဖြေ: ' + reply.trim().slice(0, 100);
+      }
+    } catch (err) {
+      aiTestResult.textContent = '❌ FAIL — ' + (err instanceof Error ? err.message : 'မသိရှိသောအမှား') + ' · Provider/Key/Model နှင့် အင်တာနက်ကို စစ်ပါ။';
+    } finally { aiTestButton.disabled = false; }
+  });
   wakeToggle.addEventListener('click', async () => {
     wakeToggle.disabled = true;
     wakeFeedback.textContent = wakeEnabled ? 'နားထောင်မှု ရပ်နေသည်…' : 'Microphone service စတင်နေသည်…';
