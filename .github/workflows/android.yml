@@ -27,6 +27,7 @@ on:
       - '.github/workflows/android.yml'
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,6 +43,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Install Rust toolchain for Android JNI
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Build web app
@@ -52,6 +59,28 @@ jobs:
           npx cap sync android
       - name: Install native Android integration
         run: npm run android:setup
+      - name: Download latest trained Amara wake-word model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID="$(gh run list --workflow train-burmese-wakeword.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+            echo "No successful Amara wake-word training run was found." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/amara-wakeword"
+          gh run download "$RUN_ID" --name amara-burmese-wakeword-onnx --dir "$RUNNER_TEMP/amara-wakeword"
+          MODEL="$(find "$RUNNER_TEMP/amara-wakeword" -type f -name 'amara_ye_burmese.onnx' -print -quit)"
+          if [ -z "$MODEL" ]; then
+            echo "Trained classifier ONNX file was not present in the artifact." >&2
+            exit 1
+          fi
+          mkdir -p android/app/src/main/assets
+          cp "$MODEL" android/app/src/main/assets/amara_ye_burmese.onnx
+          echo "Bundled trained classifier: $(stat -c%s android/app/src/main/assets/amara_ye_burmese.onnx) bytes"
+      - name: Build Rust wake-word JNI library
+        run: |
+          cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build --release --manifest-path native/wakeword-rs/Cargo.toml
       - name: Build debug APK
         run: |
           cd android
