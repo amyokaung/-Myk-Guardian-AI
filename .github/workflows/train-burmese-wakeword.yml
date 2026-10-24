@@ -30,10 +30,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg espeak-ng libsndfile1 sox portaudio19-dev
 
-      - name: Install LiveKit WakeWord with Burmese TTS backend
+      - name: Install compatible LiveKit WakeWord release with Burmese TTS backend
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "livekit-wakeword[train,eval,export,voxcpm]"
+          # 0.3.0 introduced an extraction API mismatch in the previous run:
+          # CLI calls run_extraction(config), but the installed function required sess_options.
+          # Pin to the prior release while the upstream API mismatch is resolved.
+          python -m pip install "livekit-wakeword[train,eval,export,voxcpm]==0.2.3"
+          python -c "import importlib.metadata as m; print('livekit-wakeword', m.version('livekit-wakeword'))"
           livekit-wakeword --help
 
       - name: Prepare model and datasets
