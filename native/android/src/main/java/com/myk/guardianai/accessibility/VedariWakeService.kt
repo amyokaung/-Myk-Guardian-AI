@@ -73,7 +73,11 @@ class VedariWakeService : Service() {
                     override fun onRmsChanged(rmsdB: Float) = Unit
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
                     override fun onEndOfSpeech() = Unit
-                    override fun onError(error: Int) { scheduleRestart() }
+                    override fun onError(error: Int) {
+                        // Stop on platform-recognizer errors: restarting here can cause
+                        // an endless mic open/close cycle and repeated system tones.
+                        stopAfterRecognitionError()
+                    }
                     override fun onResults(results: android.os.Bundle?) {
                         val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         val heard = candidates.firstOrNull().orEmpty().trim()
@@ -115,8 +119,29 @@ class VedariWakeService : Service() {
             }
             recognizer?.startListening(request)
         } catch (_: Exception) {
-            scheduleRestart()
+            stopAfterRecognitionError()
         }
+    }
+
+    private fun stopAfterRecognitionError() {
+        if (restarting) return
+        restarting = true
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        try { recognizer?.destroy() } catch (_: Exception) {}
+        recognizer = null
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setContentTitle("အမရာ Voice Assistant")
+            .setContentText("အသံနားထောင်မှု ရပ်သွားသည်။ Wake Test ထဲမှ ပြန်စတင်ပါ။")
+            .setOngoing(false)
+            .build()
+        manager.notify(NOTIFICATION_ID, notification)
+        android.os.Handler(mainLooper).postDelayed({
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }, 1_200L)
     }
 
     private fun savePendingCommand(command: String) {
