@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{message?:string}>; stopVedariWakeListening(): Promise<{message?:string}>; getPendingWakeCommand(): Promise<{listening:boolean;command?:string;timestamp?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -50,6 +50,7 @@ function render() {
     {id:'chat',icon:'✳',title:'Chat',sub:'မြန်မာလို စကားပြော',tone:'mint'},
     {id:'brain',icon:'🧠',title:'Brain',sub:'ကိုယ်ပိုင်မှတ်ဉာဏ်',tone:'violet'},
     {id:'agent',icon:'✣',title:'Agent',sub:'ဖုန်းလုပ်ဆောင်ချက်များ',tone:'blue'},
+    {id:'wake',icon:'◉',title:'Wake Test',sub:'Wake word စမ်းသပ်ရန်',tone:'violet'},
     {id:'permissions',icon:'⛨',title:'Permissions',sub:'ခွင့်ပြုချက်များ',tone:'amber'},
     {id:'settings',icon:'⚙',title:'Settings',sub:'API နှင့် Model',tone:'rose'}
   ];
@@ -94,6 +95,7 @@ function render() {
   if(activeTab==='chat') renderChat(view);
   else if(activeTab==='brain') renderBrain(view);
   else if(activeTab==='agent') renderAgent(view,perms);
+  else if(activeTab==='wake') renderWakeTest(view);
   else if(activeTab==='permissions') renderPermissions(view,perms);
   else if(activeTab==='settings') renderSettings(view);
 }
@@ -218,6 +220,44 @@ const capabilities = [
   { id:'location', title:'တည်နေရာ', desc:'လိုအပ်တဲ့အချိန်မှာသာ location access', level:'LOCATION PERMISSION' },
   { id:'files', title:'ဖိုင်အသုံးပြုမှု', desc:'Android file picker မှတစ်ဆင့် ရွေးချယ်ထားသောဖိုင်', level:'USER-SELECTED FILES' }
 ];
+
+async function renderWakeTest(view: HTMLElement) {
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">AMARA VOICE LAB</span><h2>Wake Word စမ်းသပ်ရန်</h2></div><span class="pill" id="wakeStatusPill">စစ်ဆေးနေသည်</span></div>
+    <div class="card">
+      <h3>“အမရာရေ” ကို ခေါ်ကြည့်ပါ</h3>
+      <p class="muted">နားထောင်မှုကို စတင်ပြီးနောက် “အမရာရေ” သို့မဟုတ် “အမရာလေး” လို့ ပြောပါ။ Android notification မှာ နားထောင်နေကြောင်း ပြပါမယ်။</p>
+      <div class="status-row"><div><b>Wake listener</b><small id="wakeListenerStatus">အခြေအနေ စစ်ဆေးနေသည်…</small></div><button class="secondary" id="wakeRefresh">ပြန်စစ်ရန်</button></div>
+      <div class="button-row" style="display:flex;gap:10px;margin-top:16px"><button class="primary" id="wakeStart">▶ စတင်နားထောင်ရန်</button><button class="secondary" id="wakeStop">■ ရပ်ရန်</button></div>
+      <div class="notice" style="margin-top:16px"><b>စမ်းသပ်မှုအခြေအနေ</b><p>ဒီမျက်နှာပြင်က လက်ရှိ Android Speech Recognition ကို သုံးပြီး wake phrase ကို စမ်းသပ်ပေးပါတယ်။ ONNX လေ့ကျင့်ထားသော Wake Model ကို inference အတွက် ချိတ်ဆက်ပြီးပြီဟု မဆိုလိုပါ။</p></div>
+      <div class="card" style="margin-top:14px"><b>နောက်ဆုံးရလဒ်</b><p id="wakeLastResult" class="muted">စမ်းသပ်မှု မလုပ်ရသေးပါ။</p></div>
+    </div>`;
+  const status = view.querySelector<HTMLElement>('#wakeListenerStatus')!;
+  const pill = view.querySelector<HTMLElement>('#wakeStatusPill')!;
+  const last = view.querySelector<HTMLElement>('#wakeLastResult')!;
+  const refresh = async () => {
+    try {
+      const r = await MykNative.getPendingWakeCommand();
+      status.textContent = r.listening ? 'နားထောင်မှု ဖွင့်ထားသည်' : 'နားထောင်မှု ပိတ်ထားသည်';
+      pill.textContent = r.listening ? 'LISTENING' : 'STOPPED';
+      if (r.command) last.textContent = 'နောက်ဆုံး wake/command: ' + r.command;
+    } catch (e) {
+      status.textContent = 'Native plugin အခြေအနေ မရပါ';
+      pill.textContent = 'ERROR';
+      last.textContent = e instanceof Error ? e.message : String(e);
+    }
+  };
+  view.querySelector('#wakeRefresh')?.addEventListener('click', () => { void refresh(); });
+  view.querySelector('#wakeStart')?.addEventListener('click', async () => {
+    try { const r = await MykNative.startVedariWakeListening(); last.textContent = r.message || 'Wake listener စတင်ရန် အမိန့်ပို့ပြီးပါပြီ။'; await refresh(); }
+    catch (e) { last.textContent = 'စတင်မရပါ: ' + (e instanceof Error ? e.message : String(e)); }
+  });
+  view.querySelector('#wakeStop')?.addEventListener('click', async () => {
+    try { const r = await MykNative.stopVedariWakeListening(); last.textContent = r.message || 'Wake listener ရပ်ရန် အမိန့်ပို့ပြီးပါပြီ။'; await refresh(); }
+    catch (e) { last.textContent = 'ရပ်မရပါ: ' + (e instanceof Error ? e.message : String(e)); }
+  });
+  await refresh();
+}
+
 function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
   view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">USER GATED</span></div>
     <div class="notice"><b>⚠ အရေးကြီး</b><p>ဒီ build က အခြေခံ Agent UI ဖြစ်ပါတယ်။ Switch ဖွင့်ရုံနဲ့ Android permission တကယ်ရသွားတာမဟုတ်ပါ။ Native integration နဲ့ OS permission လိုအပ်ပါတယ်။</p></div>
