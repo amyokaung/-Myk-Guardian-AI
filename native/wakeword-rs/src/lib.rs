@@ -1,7 +1,7 @@
 use jni::objects::{JClass, JShortArray, JString};
 use jni::sys::{jfloat, jint, jlong};
 use jni::JNIEnv;
-use livekit_wakeword::wakeword::WakeWordModel;
+use livekit_wakeword::WakeWordModel;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
