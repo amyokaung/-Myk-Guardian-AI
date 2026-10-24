@@ -182,7 +182,7 @@ class VedariWakeService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val stopIntent = Intent(this, AmaraWakeService::class.java).setAction(ACTION_STOP)
+        val stopIntent = Intent(this, VedariWakeService::class.java).setAction(ACTION_STOP)
         val pending = PendingIntent.getService(this, 2, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
