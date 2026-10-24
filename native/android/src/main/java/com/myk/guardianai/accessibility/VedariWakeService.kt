@@ -6,6 +6,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
@@ -13,32 +16,31 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.app.NotificationCompat
+import java.io.File
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * User-started foreground wake-word listener.
- *
- * This phase detects the spoken wake phrase only. It is NOT speaker verification:
- * voice identity must be added with a real speaker-embedding model before any
- * security-sensitive action is allowed to rely on the speaker's identity.
+ * On-device Amara wake-word listener. A LiveKit wake-word pipeline (mel spectrogram,
+ * speech embeddings and the trained ONNX classifier) runs on raw microphone PCM.
+ * Android SpeechRecognizer is used only AFTER the local model detects the wake word,
+ * to transcribe the user's follow-up command.
  */
 class VedariWakeService : Service() {
-    private var recognizer: SpeechRecognizer? = null
-    private var restarting = false
+    private val running = AtomicBoolean(false)
+    private var audioThread: Thread? = null
+    private var recorder: AudioRecord? = null
+    private var detector: NativeWakeWordBridge? = null
+    private var detectorHandle: Long = 0L
+    private var commandRecognizer: SpeechRecognizer? = null
     private var awaitingCommand = false
-    private var consecutiveErrors = 0
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        // Android 10+ supports an explicit foreground-service type. On Android 14
-        // this must match the manifest's microphone type and granted RECORD_AUDIO.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
+            startForeground(NOTIFICATION_ID, buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
         } else {
             startForeground(NOTIFICATION_ID, buildNotification())
         }
@@ -53,61 +55,135 @@ class VedariWakeService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
-                startRecognition()
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, true).apply()
+                startOnDeviceDetection()
                 return START_STICKY
             }
         }
     }
 
-    private fun startRecognition() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
+    private fun startOnDeviceDetection() {
+        if (running.get()) return
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            failAndStop("မိုက်ခွင့်ပြုချက် မရရှိပါ။")
             return
         }
-        if (recognizer == null) {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext).also { speech ->
+        try {
+            val modelFile = copyClassifierFromAssets()
+            val bridge = NativeWakeWordBridge()
+            val handle = bridge.nativeCreate(modelFile.absolutePath, SAMPLE_RATE)
+            if (handle == 0L) throw IllegalStateException("ONNX wake model load failed")
+            detector = bridge
+            detectorHandle = handle
+            val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_IN, AUDIO_FORMAT)
+            if (minimum <= 0) throw IllegalStateException("AudioRecord buffer configuration unsupported")
+            val audioRecord = AudioRecord(MediaRecorder.AudioSource.MIC, SAMPLE_RATE,
+                CHANNEL_IN, AUDIO_FORMAT, maxOf(minimum, WINDOW_SAMPLES * 2))
+            if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
+                audioRecord.release()
+                throw IllegalStateException("Microphone initialization failed")
+            }
+            recorder = audioRecord
+            running.set(true)
+            audioRecord.startRecording()
+            audioThread = Thread({ listenLoop(audioRecord, bridge, handle) }, "AmaraWakeWord")
+                .apply { isDaemon = true; start() }
+        } catch (error: Exception) {
+            failAndStop("Wake model မစတင်နိုင်ပါ: ${error.message ?: "unknown error"}")
+        }
+    }
+
+    private fun copyClassifierFromAssets(): File {
+        val target = File(filesDir, "amara_ye_burmese.onnx")
+        if (!target.isFile || target.length() == 0L) {
+            assets.open("amara_ye_burmese.onnx").use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        if (target.length() == 0L) throw IllegalStateException("ONNX classifier asset is empty")
+        return target
+    }
+
+    private fun listenLoop(audioRecord: AudioRecord, bridge: NativeWakeWordBridge, handle: Long) {
+        val hop = ShortArray(HOP_SAMPLES)
+        var window = ShortArray(WINDOW_SAMPLES)
+        var filled = 0
+        while (running.get()) {
+            val count = try { audioRecord.read(hop, 0, hop.size, AudioRecord.READ_BLOCKING) }
+                catch (_: Exception) { -1 }
+            if (count <= 0) {
+                if (running.get()) android.os.Handler(mainLooper).post { failAndStop("မိုက်မှ အသံမဖတ်နိုင်ပါ။") }
+                break
+            }
+            if (count < hop.size) continue
+            if (filled < WINDOW_SAMPLES) {
+                val take = minOf(count, WINDOW_SAMPLES - filled)
+                System.arraycopy(hop, 0, window, filled, take)
+                filled += take
+                if (take < count) {
+                    val rest = count - take
+                    System.arraycopy(hop, take, window, 0, rest)
+                    filled = rest
+                }
+            } else {
+                System.arraycopy(window, HOP_SAMPLES, window, 0, WINDOW_SAMPLES - HOP_SAMPLES)
+                System.arraycopy(hop, 0, window, WINDOW_SAMPLES - HOP_SAMPLES, HOP_SAMPLES)
+            }
+            if (filled >= WINDOW_SAMPLES) {
+                val score = try { bridge.nativePredict(handle, window) } catch (_: Exception) { 0f }
+                if (score >= WAKE_THRESHOLD && running.get()) {
+                    android.os.Handler(mainLooper).post { onWakeDetected(score) }
+                    break
+                }
+            }
+        }
+    }
+
+    private fun onWakeDetected(score: Float) {
+        if (!running.get()) return
+        stopAudioCaptureOnly()
+        awaitingCommand = true
+        savePendingCommand(WAKE_ONLY_SENTINEL)
+        wakeScreenBriefly()
+        openAppWithCommand(WAKE_ONLY_SENTINEL)
+        startCommandRecognition()
+    }
+
+    private fun startCommandRecognition() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            awaitingCommand = false
+            startOnDeviceDetection()
+            return
+        }
+        try {
+            commandRecognizer?.destroy()
+            commandRecognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext).also { speech ->
                 speech.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: android.os.Bundle?) { restarting = false; consecutiveErrors = 0 }
+                    override fun onReadyForSpeech(params: android.os.Bundle?) = Unit
                     override fun onBeginningOfSpeech() = Unit
                     override fun onRmsChanged(rmsdB: Float) = Unit
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
                     override fun onEndOfSpeech() = Unit
                     override fun onError(error: Int) {
-                        handleRecognitionError(error)
+                        awaitingCommand = false
+                        destroyCommandRecognizer()
+                        android.os.Handler(mainLooper).postDelayed({ if (isEnabled()) startOnDeviceDetection() }, 700L)
                     }
                     override fun onResults(results: android.os.Bundle?) {
                         val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                         val heard = candidates.firstOrNull().orEmpty().trim()
-                        if (awaitingCommand) {
-                            awaitingCommand = false
-                            if (heard.isNotBlank()) {
-                                savePendingCommand(heard)
-                                wakeScreenBriefly()
-                                openAppWithCommand(heard)
-                            }
-                        } else if (isWakeCommand(heard)) {
-                            val command = removeWakePhrase(heard)
-                            wakeScreenBriefly()
-                            if (command.isBlank()) {
-                                // Wake phrase alone: open the assistant and keep listening for the next utterance.
-                                awaitingCommand = true
-                                savePendingCommand(WAKE_ONLY_SENTINEL)
-                                openAppWithCommand(WAKE_ONLY_SENTINEL)
-                            } else {
-                                savePendingCommand(command)
-                                openAppWithCommand(command)
-                            }
+                        if (heard.isNotBlank()) {
+                            savePendingCommand(heard)
+                            openAppWithCommand(heard)
                         }
-                        scheduleRestart()
+                        awaitingCommand = false
+                        destroyCommandRecognizer()
+                        android.os.Handler(mainLooper).postDelayed({ if (isEnabled()) startOnDeviceDetection() }, 700L)
                     }
                     override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
                     override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
                 })
             }
-        }
-        try {
             val request = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "my-MM")
@@ -116,40 +192,52 @@ class VedariWakeService : Service() {
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             }
-            recognizer?.startListening(request)
+            commandRecognizer?.startListening(request)
         } catch (_: Exception) {
-            handleRecognitionError(-1)
+            awaitingCommand = false
+            destroyCommandRecognizer()
+            android.os.Handler(mainLooper).postDelayed({ if (isEnabled()) startOnDeviceDetection() }, 700L)
         }
     }
 
-    private fun handleRecognitionError(error: Int) {
-        if (restarting) return
-        restarting = true
-        consecutiveErrors++
-        if (consecutiveErrors <= MAX_RETRIES &&
-            getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) {
-            android.os.Handler(mainLooper).postDelayed({
-                restarting = false
-                if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) startRecognition()
-            }, RETRY_DELAY_MS * consecutiveErrors)
-            return
+    private fun destroyCommandRecognizer() {
+        try { commandRecognizer?.cancel() } catch (_: Exception) {}
+        try { commandRecognizer?.destroy() } catch (_: Exception) {}
+        commandRecognizer = null
+    }
+
+    private fun stopAudioCaptureOnly() {
+        running.set(false)
+        try { recorder?.stop() } catch (_: Exception) {}
+        try { recorder?.release() } catch (_: Exception) {}
+        recorder = null
+        audioThread = null
+        val bridge = detector
+        val handle = detectorHandle
+        detector = null
+        detectorHandle = 0L
+        if (bridge != null && handle != 0L) {
+            try { bridge.nativeDestroy(handle) } catch (_: Exception) {}
         }
+    }
+
+    private fun isEnabled(): Boolean =
+        getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)
+
+    private fun failAndStop(message: String) {
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
-        try { recognizer?.cancel() } catch (_: Exception) {}
-        try { recognizer?.destroy() } catch (_: Exception) {}
-        recognizer = null
+        stopAudioCaptureOnly()
+        destroyCommandRecognizer()
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+        manager.notify(NOTIFICATION_ID, NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("အမရာ Voice Assistant")
-            .setContentText("နားထောင်မှု မအောင်မြင်ပါ (အမှားကုဒ် $error)။ Wake Test မှ ပြန်စတင်ပါ။")
-            .setOngoing(false)
-            .build()
-        manager.notify(NOTIFICATION_ID, notification)
+            .setContentText(message.take(100))
+            .setOngoing(false).build())
         android.os.Handler(mainLooper).postDelayed({
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
-        }, 1_200L)
+        }, 1_500L)
     }
 
     private fun savePendingCommand(command: String) {
@@ -159,39 +247,12 @@ class VedariWakeService : Service() {
             .apply()
     }
 
-    private fun isWakeCommand(value: String): Boolean {
-        val normalized = value.lowercase(Locale.ROOT)
-            .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
-        return listOf("အမရာရေ", "အမရာလေး").any { normalized.contains(it) }
-    }
-
-    private fun removeWakePhrase(value: String): String {
-        return Regex("အမရာ(?:ရေ|လေး)\\s*[၊,]?\\s*").replace(value, "").trim()
-    }
-
-    private fun scheduleRestart() {
-        if (restarting) return
-        restarting = true
-        android.os.Handler(mainLooper).postDelayed({
-            restarting = false
-            if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) startRecognition()
-            else stopSelf()
-        }, RESTART_DELAY_MS)
-    }
-
     private fun openAppWithCommand(command: String) {
         val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
-        launch.addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP
-        )
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         launch.putExtra(EXTRA_WAKE_COMMAND, command)
-        try {
-            startActivity(launch)
-        } catch (_: Exception) {
-            // Android/OEM policy may block launching an Activity from the background.
-            // The command remains saved and will be consumed when the user returns to Myk.
+        try { startActivity(launch) } catch (_: Exception) {
+            // The command remains in preferences and is consumed when the app returns.
         }
     }
 
@@ -199,28 +260,26 @@ class VedariWakeService : Service() {
         try {
             val manager = getSystemService(POWER_SERVICE) as PowerManager
             @Suppress("DEPRECATION")
-            val lock = manager.newWakeLock(
-                PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                "MykGuardian:AmaraWake"
-            )
+            val lock = manager.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "AmaraAI:WakeWord")
             lock.acquire(3_000L)
-        } catch (_: Exception) { /* Wake screen is best effort and never bypasses device lock. */ }
+        } catch (_: Exception) {}
     }
 
     private fun stopRecognition() {
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
-        try { recognizer?.cancel() } catch (_: Exception) {}
-        try { recognizer?.destroy() } catch (_: Exception) {}
-        recognizer = null
+        stopAudioCaptureOnly()
+        destroyCommandRecognizer()
     }
 
     private fun buildNotification(): Notification {
         val stopIntent = Intent(this, VedariWakeService::class.java).setAction(ACTION_STOP)
-        val pending = PendingIntent.getService(this, 2, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val pending = PendingIntent.getService(this, 2, stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("အမရာ Voice Assistant")
-            .setContentText("Wake word နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
+            .setContentText("စက်အတွင်း Wake Word model ဖြင့် နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
             .setOngoing(true)
             .addAction(0, "Stop", pending)
             .build()
@@ -234,9 +293,8 @@ class VedariWakeService : Service() {
     }
 
     override fun onDestroy() {
-        try { recognizer?.cancel() } catch (_: Exception) {}
-        try { recognizer?.destroy() } catch (_: Exception) {}
-        recognizer = null
+        stopAudioCaptureOnly()
+        destroyCommandRecognizer()
         super.onDestroy()
     }
 
@@ -253,8 +311,11 @@ class VedariWakeService : Service() {
         const val PENDING_AT = "pending_wake_at"
         const val CHANNEL_ID = "vedari_wake_channel"
         const val NOTIFICATION_ID = 8402
-        const val RESTART_DELAY_MS = 900L
-        const val MAX_RETRIES = 3
-        const val RETRY_DELAY_MS = 1_500L
+        const val SAMPLE_RATE = 16000
+        const val WINDOW_SAMPLES = 32000
+        const val HOP_SAMPLES = 16000
+        const val CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO
+        const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        const val WAKE_THRESHOLD = 0.5f
     }
 }
