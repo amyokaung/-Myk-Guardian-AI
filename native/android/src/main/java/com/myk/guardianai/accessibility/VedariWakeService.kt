@@ -34,6 +34,8 @@ class VedariWakeService : Service() {
     private var detectorHandle: Long = 0L
     private var commandRecognizer: SpeechRecognizer? = null
     private var awaitingCommand = false
+    @Volatile private var lastWakeScore = 0f
+    private var lastScoreNotificationAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -131,6 +133,12 @@ class VedariWakeService : Service() {
             }
             if (filled >= WINDOW_SAMPLES) {
                 val score = try { bridge.nativePredict(handle, window) } catch (_: Exception) { 0f }
+                lastWakeScore = score
+                val now = System.currentTimeMillis()
+                if (now - lastScoreNotificationAt >= SCORE_NOTIFICATION_INTERVAL_MS) {
+                    lastScoreNotificationAt = now
+                    android.os.Handler(mainLooper).post { updateListeningNotification(score) }
+                }
                 if (score >= WAKE_THRESHOLD && running.get()) {
                     android.os.Handler(mainLooper).post { onWakeDetected(score) }
                     break
@@ -272,14 +280,22 @@ class VedariWakeService : Service() {
         destroyCommandRecognizer()
     }
 
-    private fun buildNotification(): Notification {
+    private fun updateListeningNotification(score: Float) {
+        if (!running.get()) return
+        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, buildNotification(
+            "နားထောင်နေသည် · Wake score ${"%.3f".format(Locale.US, score)}"
+        ))
+    }
+
+    private fun buildNotification(statusText: String = "စက်အတွင်း Wake Word model ဖြင့် နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။"): Notification {
         val stopIntent = Intent(this, VedariWakeService::class.java).setAction(ACTION_STOP)
         val pending = PendingIntent.getService(this, 2, stopIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("အမရာ Voice Assistant")
-            .setContentText("စက်အတွင်း Wake Word model ဖြင့် နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
+            .setContentText(statusText)
             .setOngoing(true)
             .addAction(0, "Stop", pending)
             .build()
@@ -317,5 +333,6 @@ class VedariWakeService : Service() {
         const val CHANNEL_IN = AudioFormat.CHANNEL_IN_MONO
         const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         const val WAKE_THRESHOLD = 0.5f
+        const val SCORE_NOTIFICATION_INTERVAL_MS = 3_000L
     }
 }
