@@ -386,7 +386,7 @@ async function consumePendingWakeCommand() {
   try {
     const pending = await MykNative.getPendingWakeCommand();
     if (!pending.command) return;
-    if (pending.command === '__VEDARI_WAKE_ONLY__') {
+    if (pending.command === '__VEDARI_WAKE_ONLY__' || pending.command === '__AMARA_WAKE_ONLY__') {
       if (activeTab !== 'chat') { activeTab = 'chat'; render(); }
       messages.push({ role: 'assistant', content: 'ဟုတ်ကဲ့၊ အမရာဒီမှာရှိပါတယ်။ 😊 မင်းခိုင်းချင်တာကို ဆက်ပြောလိုက်နော်။' });
       persistCurrentChat();
@@ -419,7 +419,12 @@ window.setInterval(() => {
   const diagnostic = document.querySelector<HTMLElement>('#wakeToggleFeedback');
   if (diagnostic) {
     void MykNative.getWakeListeningStatus().then(state => {
-      const details = [state.lastStatus, state.lastDetail ? 'အသေးစိတ်: ' + state.lastDetail : '', state.lastHeard ? 'ကြားခဲ့သောအသံ: ' + state.lastHeard : ''].filter(Boolean);
+      const clean = (value?: string) => !!value && !['__AMARA_WAKE_ONLY__', '__VEDARI_WAKE_ONLY__'].includes(value.trim());
+      const details = [
+        clean(state.lastStatus) ? state.lastStatus : '',
+        clean(state.lastDetail) ? 'အသေးစိတ်: ' + state.lastDetail : '',
+        clean(state.lastHeard) ? 'ကြားခဲ့သောအသံ: ' + state.lastHeard : ''
+      ].filter(Boolean);
       if (details.length) diagnostic.textContent = details.join(' · ');
     }).catch(() => {});
   }
@@ -778,8 +783,13 @@ function renderSettings(view: HTMLElement) {
       wakeToggle.textContent = wakeEnabled ? 'ပိတ်မယ်' : 'ဖွင့်မယ်';
       wakeToggle.classList.toggle('danger', wakeEnabled);
       wakeToggle.setAttribute('aria-pressed', String(wakeEnabled));
-      const details = [state.lastStatus, state.lastDetail ? 'အသေးစိတ်: ' + state.lastDetail : '', state.lastHeard ? 'ကြားခဲ့သောအသံ: ' + state.lastHeard : ''].filter(Boolean);
-      if (details.length) wakeFeedback.textContent = details.join(' · ');
+      const isWakeSentinel = (value?: string) => !!value && ['__AMARA_WAKE_ONLY__', '__VEDARI_WAKE_ONLY__'].includes(value.trim());
+      const details = [
+        state.lastStatus && !isWakeSentinel(state.lastStatus) ? state.lastStatus : '',
+        state.lastDetail && !isWakeSentinel(state.lastDetail) ? 'အသေးစိတ်: ' + state.lastDetail : '',
+        state.lastHeard && !isWakeSentinel(state.lastHeard) ? 'ကြားခဲ့သောအသံ: ' + state.lastHeard : ''
+      ].filter(Boolean);
+      wakeFeedback.textContent = details.length ? details.join(' · ') : (wakeEnabled ? 'နားထောင်နေပါသည်။ “အမရာရေ” ဟုခေါ်ပြီး အမိန့်ကို ဆက်ပြောနိုင်ပါပြီ။' : 'နောက်ခံနားထောင်မှု ပိတ်ထားသည်။');
     } catch {
       wakeLabel.textContent = 'Wake Word service မရနိုင်ပါ';
       wakeHint.textContent = 'Native Android integration နှင့် Microphone permission ကို စစ်ပါ။';
