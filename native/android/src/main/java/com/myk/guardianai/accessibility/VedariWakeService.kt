@@ -26,6 +26,7 @@ class VedariWakeService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var restarting = false
     private var awaitingCommand = false
+    private var consecutiveErrors = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -68,15 +69,13 @@ class VedariWakeService : Service() {
         if (recognizer == null) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(applicationContext).also { speech ->
                 speech.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: android.os.Bundle?) { restarting = false }
+                    override fun onReadyForSpeech(params: android.os.Bundle?) { restarting = false; consecutiveErrors = 0 }
                     override fun onBeginningOfSpeech() = Unit
                     override fun onRmsChanged(rmsdB: Float) = Unit
                     override fun onBufferReceived(buffer: ByteArray?) = Unit
                     override fun onEndOfSpeech() = Unit
                     override fun onError(error: Int) {
-                        // Stop on platform-recognizer errors: restarting here can cause
-                        // an endless mic open/close cycle and repeated system tones.
-                        stopAfterRecognitionError()
+                        handleRecognitionError(error)
                     }
                     override fun onResults(results: android.os.Bundle?) {
                         val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
@@ -119,13 +118,22 @@ class VedariWakeService : Service() {
             }
             recognizer?.startListening(request)
         } catch (_: Exception) {
-            stopAfterRecognitionError()
+            handleRecognitionError(-1)
         }
     }
 
-    private fun stopAfterRecognitionError() {
+    private fun handleRecognitionError(error: Int) {
         if (restarting) return
         restarting = true
+        consecutiveErrors++
+        if (consecutiveErrors <= MAX_RETRIES &&
+            getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) {
+            android.os.Handler(mainLooper).postDelayed({
+                restarting = false
+                if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) startRecognition()
+            }, RETRY_DELAY_MS * consecutiveErrors)
+            return
+        }
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
         try { recognizer?.cancel() } catch (_: Exception) {}
         try { recognizer?.destroy() } catch (_: Exception) {}
@@ -134,7 +142,7 @@ class VedariWakeService : Service() {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("အမရာ Voice Assistant")
-            .setContentText("အသံနားထောင်မှု ရပ်သွားသည်။ Wake Test ထဲမှ ပြန်စတင်ပါ။")
+            .setContentText("နားထောင်မှု မအောင်မြင်ပါ (အမှားကုဒ် $error)။ Wake Test မှ ပြန်စတင်ပါ။")
             .setOngoing(false)
             .build()
         manager.notify(NOTIFICATION_ID, notification)
@@ -246,5 +254,7 @@ class VedariWakeService : Service() {
         const val CHANNEL_ID = "vedari_wake_channel"
         const val NOTIFICATION_ID = 8402
         const val RESTART_DELAY_MS = 900L
+        const val MAX_RETRIES = 3
+        const val RETRY_DELAY_MS = 1_500L
     }
 }
