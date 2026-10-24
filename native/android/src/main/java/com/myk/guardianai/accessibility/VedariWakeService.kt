@@ -22,7 +22,7 @@ import java.util.Locale
  * voice identity must be added with a real speaker-embedding model before any
  * security-sensitive action is allowed to rely on the speaker's identity.
  */
-class VedariWakeService : Service() {
+class AmaraWakeService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var restarting = false
     private var awaitingCommand = false
@@ -129,11 +129,11 @@ class VedariWakeService : Service() {
     private fun isWakeCommand(value: String): Boolean {
         val normalized = value.lowercase(Locale.ROOT)
             .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
-        return listOf("ဗေဒါရီ", "ဗေဒါရီရေ", "ဗေဒါရီလေး").any { normalized.contains(it) }
+        return listOf("အမရာရေ", "အမရာလေး", "အမရာ").any { normalized.contains(it) }
     }
 
     private fun removeWakePhrase(value: String): String {
-        return Regex("ဗေဒါရီ(?:ရေ|လေး)?\\s*[၊,]?\\s*").replace(value, "").trim()
+        return Regex("အမရာ(?:ရေ|လေး)?\\s*[၊,]?\\s*").replace(value, "").trim()
     }
 
     private fun scheduleRestart() {
@@ -168,7 +168,7 @@ class VedariWakeService : Service() {
             @Suppress("DEPRECATION")
             val lock = manager.newWakeLock(
                 PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
-                "MykGuardian:VedariWake"
+                "MykGuardian:AmaraWake"
             )
             lock.acquire(3_000L)
         } catch (_: Exception) { /* Wake screen is best effort and never bypasses device lock. */ }
@@ -182,11 +182,11 @@ class VedariWakeService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val stopIntent = Intent(this, VedariWakeService::class.java).setAction(ACTION_STOP)
+        val stopIntent = Intent(this, AmaraWakeService::class.java).setAction(ACTION_STOP)
         val pending = PendingIntent.getService(this, 2, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("ဗေဒါရီ Voice Assistant")
+            .setContentTitle("အမရာ Voice Assistant")
             .setContentText("Wake word နားထောင်နေသည်။ ရပ်ရန် Stop ကိုနှိပ်ပါ။")
             .setOngoing(true)
             .addAction(0, "Stop", pending)
@@ -195,7 +195,7 @@ class VedariWakeService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "ဗေဒါရီ Voice Assistant", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "အမရာ Voice Assistant", NotificationManager.IMPORTANCE_LOW)
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
     }
@@ -210,13 +210,13 @@ class VedariWakeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        const val ACTION_START = "com.myk.guardianai.VEDARI_START"
-        const val ACTION_STOP = "com.myk.guardianai.VEDARI_STOP"
+        const val ACTION_START = "com.myk.guardianai.AMARA_START"
+        const val ACTION_STOP = "com.myk.guardianai.AMARA_STOP"
         const val EXTRA_WAKE_COMMAND = "com.myk.guardianai.WAKE_COMMAND"
         const val PREFS = "vedari_wake_preferences"
         const val ENABLED = "wake_enabled"
         const val PENDING_COMMAND = "pending_wake_command"
-        const val WAKE_ONLY_SENTINEL = "__VEDARI_WAKE_ONLY__"
+        const val WAKE_ONLY_SENTINEL = "__AMARA_WAKE_ONLY__"
         const val PENDING_AT = "pending_wake_at"
         const val CHANNEL_ID = "vedari_wake_channel"
         const val NOTIFICATION_ID = 8402
