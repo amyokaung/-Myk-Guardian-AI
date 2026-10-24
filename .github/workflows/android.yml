@@ -80,7 +80,8 @@ jobs:
           echo "Bundled trained classifier: $(stat -c%s android/app/src/main/assets/amara_ye_burmese.onnx) bytes"
       - name: Build Rust wake-word JNI library
         run: |
-          cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build --release --manifest-path native/wakeword-rs/Cargo.toml
+          cd native/wakeword-rs
+          cargo ndk -t arm64-v8a -o "$GITHUB_WORKSPACE/android/app/src/main/jniLibs" build --release
       - name: Build debug APK
         run: |
           cd android
