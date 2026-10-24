@@ -1,6 +1,7 @@
 # Initial smoke-test config for Burmese wake phrase "အမရာရေ".
-# Expanded dataset for a more meaningful Burmese wake-word evaluation. Do not ship unless evaluation passes.
-# Listen to generated positive clips before treating the model as usable.
+# Keep this run bounded: the expanded VoxCPM dataset generation exceeded the workflow time budget.
+# Restore the known-fast dataset size while improving the training/evaluation pipeline in stages.
+# Do not ship unless evaluation passes; listen to generated positive clips first.
 
 model_name: amara_ye_burmese
 target_phrases:
@@ -16,10 +17,10 @@ voxcpm_tts:
   cfg_values: [2.0]
   inference_timesteps_list: [10]
 
-n_samples: 120
-n_samples_val: 40
-n_background_samples: 300
-n_background_samples_val: 120
+n_samples: 24
+n_samples_val: 8
+n_background_samples: 40
+n_background_samples_val: 8
 tts_batch_size: 2
 
 custom_negative_phrases:
@@ -35,7 +36,7 @@ output_dir: ./output
 augmentation:
   clip_duration: 2.0
   batch_size: 8
-  rounds: 3
+  rounds: 2
   background_paths: [./data/backgrounds]
   rir_paths: [./data/rirs]
 
@@ -43,7 +44,7 @@ model:
   model_type: conv_attention
   model_size: tiny
 
-steps: 3000
+steps: 500
 learning_rate: 0.001
 max_negative_weight: 100
 target_fp_per_hour: 1.0
