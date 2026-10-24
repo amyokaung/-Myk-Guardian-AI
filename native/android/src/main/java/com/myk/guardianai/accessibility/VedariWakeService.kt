@@ -22,7 +22,7 @@ import java.util.Locale
  * voice identity must be added with a real speaker-embedding model before any
  * security-sensitive action is allowed to rely on the speaker's identity.
  */
-class AmaraWakeService : Service() {
+class VedariWakeService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var restarting = false
     private var awaitingCommand = false
@@ -210,8 +210,8 @@ class AmaraWakeService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
-        const val ACTION_START = "com.myk.guardianai.AMARA_START"
-        const val ACTION_STOP = "com.myk.guardianai.AMARA_STOP"
+        const val ACTION_START = "com.myk.guardianai.VEDARI_START"
+        const val ACTION_STOP = "com.myk.guardianai.VEDARI_STOP"
         const val EXTRA_WAKE_COMMAND = "com.myk.guardianai.WAKE_COMMAND"
         const val PREFS = "vedari_wake_preferences"
         const val ENABLED = "wake_enabled"
