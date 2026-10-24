@@ -129,11 +129,11 @@ class VedariWakeService : Service() {
     private fun isWakeCommand(value: String): Boolean {
         val normalized = value.lowercase(Locale.ROOT)
             .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
-        return listOf("အမရာရေ", "အမရာလေး", "အမရာ").any { normalized.contains(it) }
+        return listOf("အမရာရေ", "အမရာလေး").any { normalized.contains(it) }
     }
 
     private fun removeWakePhrase(value: String): String {
-        return Regex("အမရာ(?:ရေ|လေး)?\\s*[၊,]?\\s*").replace(value, "").trim()
+        return Regex("အမရာ(?:ရေ|လေး)\\s*[၊,]?\\s*").replace(value, "").trim()
     }
 
     private fun scheduleRestart() {
