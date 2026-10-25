@@ -570,20 +570,42 @@ const capabilities = [
   { id:'files', title:'ဖိုင်အသုံးပြုမှု', desc:'Android file picker မှတစ်ဆင့် ရွေးချယ်ထားသောဖိုင်', level:'USER-SELECTED FILES' }
 ];
 function renderAgent(view: HTMLElement, perms: Record<string, boolean>) {
-  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">USER GATED</span></div>
-    <div class="notice"><b>⚠ အရေးကြီး</b><p>ဒီ build က အခြေခံ Agent UI ဖြစ်ပါတယ်။ Switch ဖွင့်ရုံနဲ့ Android permission တကယ်ရသွားတာမဟုတ်ပါ။ Native integration နဲ့ OS permission လိုအပ်ပါတယ်။</p></div>
+  view.innerHTML = `<div class="section-head"><div><span class="eyebrow">TASK ORCHESTRATOR</span><h2>Agent Control</h2></div><span class="pill">ANDROID LIVE STATUS</span></div>
+    <div class="notice"><b>⚠ အရေးကြီး</b><p>အောက်ပါအခြေအနေများကို Android OS မှ တိုက်ရိုက်ပြန်ဖတ်ပြီး ပြသမည်။ Permission ပြောင်းလဲပြီး app သို့ပြန်လာပါက ပြန်စစ်မည်။</p></div>
     <div class="action-grid">
       <button class="action-card" id="openSettings"><span>⚙</span><b>Android Settings</b><small>ဖုန်းဆက်တင်ကို ဖွင့်ရန်</small></button>
-      <button class="action-card" id="testConfirm"><span>✓</span><b>Permission စမ်းသပ်ရန်</b><small>အတည်ပြုချက်စမ်းသပ်မှု</small></button>
+      <button class="action-card" id="refreshAgentPerms"><span>↻</span><b>ပြန်စစ်မယ်</b><small>OS ခွင့်ပြုချက်များ ပြန်ဖတ်ရန်</small></button>
     </div>
-    <div class="card"><div class="card-title">အလုပ်လုပ်ခွင့်အခြေအနေ</div>${capabilities.map(c=>`<div class="status-row"><div><b>${c.title}</b><small>${c.level}</small></div><span class="state ${perms[c.id]?'enabled':''}">${perms[c.id]?'ENABLED':'DISABLED'}</span></div>`).join('')}</div>`;
+    <div class="card"><div class="card-title">အလုပ်လုပ်ခွင့်အခြေအနေ</div><div id="agentPermissionRows">${capabilities.map(c=>`<div class="status-row"><div><b>${c.title}</b><small>${c.level}</small></div><span class="state">စစ်ဆေးနေသည်…</span></div>`).join('')}</div></div>`;
+  const refresh = async () => {
+    const rows = view.querySelector<HTMLElement>('#agentPermissionRows');
+    if (!rows) return;
+    try {
+      const s = await MykNative.getStatus();
+      const wake = await MykNative.getWakeListeningStatus();
+      const actual: Record<string, boolean> = {
+        openApps: true,
+        accessibility: !!s.accessibilityEnabled && !!s.serviceConnected,
+        notifications: !!s.notificationEnabled,
+        microphone: !!s.microphoneGranted,
+        location: !!s.locationGranted,
+        files: true
+      };
+      rows.innerHTML = capabilities.map(c=>`<div class="status-row"><div><b>${c.title}</b><small>${c.level}</small></div><span class="state ${actual[c.id]?'enabled':''}">${actual[c.id]?'ENABLED':'DISABLED'}</span></div>`).join('') +
+        `<div class="status-row"><div><b>Wake Word listener</b><small>${wake.lastStatus || 'နောက်ခံအသံနားထောင်မှု'}</small></div><span class="state ${wake.listening?'enabled':''}">${wake.listening?'LISTENING':'STOPPED'}</span></div>`;
+    } catch {
+      rows.innerHTML = '<p class="hint">Android Native status ကို မဖတ်နိုင်ပါ။ APK ထဲမှာ Native integration ပါ/မပါ စစ်ပါ။</p>';
+    }
+  };
+  void refresh();
+  view.querySelector('#refreshAgentPerms')?.addEventListener('click', () => void refresh());
+  const onReturn = () => { if (document.visibilityState === 'visible') void refresh(); };
+  document.addEventListener('visibilitychange', onReturn);
+  window.addEventListener('focus', onReturn);
   view.querySelector('#openSettings')?.addEventListener('click', async () => {
     if (!confirm('Android Accessibility Settings ကို ဖွင့်မလား? AMARA AI ကို ကိုယ်တိုင်ရွေးပြီး Enable လုပ်နိုင်ပါတယ်။')) return;
     try { await MykNative.openAccessibilitySettings(); }
     catch (err) { alert('Android Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
-  });
-  view.querySelector('#testConfirm')?.addEventListener('click', () => {
-    if (confirm('ဒီအရာက အတည်ပြုချက် dialog စမ်းသပ်မှုသာဖြစ်ပါတယ်။ ဆက်လုပ်မလား?')) alert('အတည်ပြုချက်ကို လက်ခံရရှိပါတယ်။ စမ်းသပ်မှုသာဖြစ်ပြီး ဖုန်းမှာ ဘာမှမပြောင်းလဲခဲ့ပါ။');
   });
 }
 function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
