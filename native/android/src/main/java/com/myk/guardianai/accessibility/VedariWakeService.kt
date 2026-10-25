@@ -29,6 +29,7 @@ class VedariWakeService : Service() {
     private var awaitingCommand = false
     private var textToSpeech: TextToSpeech? = null
     private var ttsReady = false
+    private var pendingWakeAck = false
 
     override fun onCreate() {
         super.onCreate()
@@ -36,11 +37,21 @@ class VedariWakeService : Service() {
         textToSpeech = TextToSpeech(applicationContext) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
-                // Prefer Burmese voice when the device has one; otherwise use its default voice.
+                // Prefer Burmese, but deliberately fall back to English if Burmese voice data is missing.
                 val result = textToSpeech?.setLanguage(Locale.forLanguageTag("my-MM"))
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                    textToSpeech?.language = Locale.getDefault()
+                    val englishResult = textToSpeech?.setLanguage(Locale.US)
+                    if (englishResult == TextToSpeech.LANG_MISSING_DATA || englishResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        ttsReady = false
+                        recordDiagnostic("TTS voice မရရှိပါ", "Install/enable an English Text-to-Speech voice in Android settings.")
+                    }
                 }
+                if (ttsReady && pendingWakeAck) {
+                    pendingWakeAck = false
+                    acknowledgeWake()
+                }
+            } else {
+                recordDiagnostic("TTS engine မစတင်နိုင်ပါ", "Android Text-to-Speech engine ကို စစ်ဆေးပါ။")
             }
         }
         // Android 10+ supports an explicit foreground-service type. On Android 14
@@ -161,18 +172,30 @@ class VedariWakeService : Service() {
 
     private fun acknowledgeWake() {
         try {
+            if (!ttsReady || textToSpeech == null) {
+                // TTS initializes asynchronously; queue the acknowledgement rather than losing it.
+                pendingWakeAck = true
+                recordDiagnostic("Wake word တွေ့ပြီ — အသံစနစ် အဆင်သင့်ဖြစ်ရန် စောင့်နေသည်", "TTS initialization pending")
+                return
+            }
+            val language = textToSpeech?.voice?.locale
+            val usingEnglishFallback = language?.language != "my"
+            val phrase = if (usingEnglishFallback) {
+                "Yes, Amara is here. Please speak."
+            } else {
+                "ဟုတ်ကဲ့၊ အမရာ ဒီမှာရှိပါတယ်။ ပြောပါနော်။"
+            }
             val utteranceId = "amara-wake-ack-" + System.currentTimeMillis()
-            textToSpeech?.speak(
-                "ဟုတ်ကဲ့၊ အမရာ ဒီမှာရှိပါတယ်။ ပြောပါနော်။",
-                TextToSpeech.QUEUE_FLUSH,
-                null,
-                utteranceId
-            )
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                .putString(LAST_STATUS, "Wake word ကို သိရှိပြီး အသံဖြင့် တုံ့ပြန်နေသည်")
-                .putString(LAST_DETAIL, "ဟုတ်ကဲ့၊ အမရာ ဒီမှာရှိပါတယ်။ ပြောပါနော်။")
-                .putLong(LAST_EVENT_AT, System.currentTimeMillis())
-                .apply()
+            val result = textToSpeech?.speak(phrase, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+            if (result == TextToSpeech.ERROR) {
+                recordDiagnostic("Wake word တွေ့ပြီ — TTS အသံထွက်မအောင်မြင်", "Check Android Text-to-Speech engine and installed voice data.")
+            } else {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString(LAST_STATUS, "Wake word ကို သိရှိပြီး အသံဖြင့် တုံ့ပြန်နေသည်")
+                    .putString(LAST_DETAIL, phrase)
+                    .putLong(LAST_EVENT_AT, System.currentTimeMillis())
+                    .apply()
+            }
         } catch (error: Exception) {
             recordDiagnostic("Wake word တွေ့ပြီ — အသံဖြင့်တုံ့ပြန်မရ", error.message ?: "TextToSpeech error")
         }
