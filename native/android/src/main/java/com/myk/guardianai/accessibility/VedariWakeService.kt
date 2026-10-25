@@ -12,6 +12,7 @@ import android.os.PowerManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
 import java.util.Locale
 
@@ -26,10 +27,22 @@ class VedariWakeService : Service() {
     private var recognizer: SpeechRecognizer? = null
     private var restarting = false
     private var awaitingCommand = false
+    private var textToSpeech: TextToSpeech? = null
+    private var ttsReady = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        textToSpeech = TextToSpeech(applicationContext) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) {
+                // Prefer Burmese voice when the device has one; otherwise use its default voice.
+                val result = textToSpeech?.setLanguage(Locale.forLanguageTag("my-MM"))
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    textToSpeech?.language = Locale.getDefault()
+                }
+            }
+        }
         // Android 10+ supports an explicit foreground-service type. On Android 14
         // this must match the manifest's microphone type and granted RECORD_AUDIO.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -113,7 +126,8 @@ class VedariWakeService : Service() {
                                 // Wake phrase alone: acknowledge, then listen for the next utterance.
                                 awaitingCommand = true
                                 savePendingCommand(WAKE_ONLY_SENTINEL)
-                                recordDiagnostic("Wake word တွေ့ပြီ", wakeCandidate)
+                                recordDiagnostic("Wake word တွေ့ပြီ — တုံ့ပြန်နေသည်", wakeCandidate)
+                                acknowledgeWake()
                                 openAppWithCommand(WAKE_ONLY_SENTINEL)
                             } else {
                                 savePendingCommand(command)
@@ -142,6 +156,25 @@ class VedariWakeService : Service() {
             recognizer?.startListening(request)
         } catch (_: Exception) {
             scheduleRestart()
+        }
+    }
+
+    private fun acknowledgeWake() {
+        try {
+            val utteranceId = "amara-wake-ack-" + System.currentTimeMillis()
+            textToSpeech?.speak(
+                "ဟုတ်ကဲ့၊ အမရာ ဒီမှာရှိပါတယ်။ ပြောပါနော်။",
+                TextToSpeech.QUEUE_FLUSH,
+                null,
+                utteranceId
+            )
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString(LAST_STATUS, "Wake word ကို သိရှိပြီး အသံဖြင့် တုံ့ပြန်နေသည်")
+                .putString(LAST_DETAIL, "ဟုတ်ကဲ့၊ အမရာ ဒီမှာရှိပါတယ်။ ပြောပါနော်။")
+                .putLong(LAST_EVENT_AT, System.currentTimeMillis())
+                .apply()
+        } catch (error: Exception) {
+            recordDiagnostic("Wake word တွေ့ပြီ — အသံဖြင့်တုံ့ပြန်မရ", error.message ?: "TextToSpeech error")
         }
     }
 
@@ -253,6 +286,8 @@ class VedariWakeService : Service() {
         try { recognizer?.cancel() } catch (_: Exception) {}
         try { recognizer?.destroy() } catch (_: Exception) {}
         recognizer = null
+        try { textToSpeech?.stop(); textToSpeech?.shutdown() } catch (_: Exception) {}
+        textToSpeech = null
         super.onDestroy()
     }
 
