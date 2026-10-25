@@ -534,12 +534,13 @@ class AccessibilityBridgePlugin : Plugin() {
     private fun performBackWithFallback(service: MyAccessibilityService): Boolean {
         Handler(Looper.getMainLooper()).post {
             val hostActivity = activity
-            if (hostActivity.isFinishing || hostActivity.isDestroyed) {
-                service.back()
-                return@post
-            }
-            if (service.activeWindowPackageName() == context.packageName) {
-                // AMARA is a single-page app: let the web UI restore its previous tab.
+            val appIsForeground = try {
+                !hostActivity.isFinishing && !hostActivity.isDestroyed &&
+                    hostActivity.window.decorView.hasWindowFocus()
+            } catch (_: Exception) { false }
+            if (appIsForeground) {
+                // Never send Android GLOBAL_ACTION_BACK while AMARA itself is focused:
+                // that can close the app instead of navigating the SPA history.
                 bridge?.webView?.evaluateJavascript(
                     "window.dispatchEvent(new Event('amara-native-back'))", null
                 )
