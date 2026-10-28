@@ -89,29 +89,35 @@ internal class AmaraOnnxWakeDetector(
             val ring = ShortArray(WINDOW_SAMPLES)
             val incoming = ShortArray(STEP_SAMPLES)
             var filled = 0
-            var sinceScore = 0
             while (running.get()) {
-                val count = recorder.read(incoming, 0, incoming.size, AudioRecord.READ_BLOCKING)
-                if (count < 0) throw IllegalStateException("AudioRecord read error: $count")
-                if (count == 0) continue
-                for (i in 0 until count) {
-                    if (filled < WINDOW_SAMPLES) {
-                        ring[filled++] = incoming[i]
-                    } else {
-                        System.arraycopy(ring, 1, ring, 0, WINDOW_SAMPLES - 1)
-                        ring[WINDOW_SAMPLES - 1] = incoming[i]
+                var count = 0
+                while (count < incoming.size && running.get()) {
+                    val read = recorder.read(incoming, count, incoming.size - count, AudioRecord.READ_BLOCKING)
+                    if (read < 0) throw IllegalStateException("AudioRecord read error: $read")
+                    if (read == 0) continue
+                    count += read
+                }
+                if (!running.get() || count == 0) break
+                if (filled < WINDOW_SAMPLES) {
+                    val copyCount = minOf(count, WINDOW_SAMPLES - filled)
+                    System.arraycopy(incoming, 0, ring, filled, copyCount)
+                    filled += copyCount
+                    if (copyCount < count) {
+                        val remainder = count - copyCount
+                        System.arraycopy(ring, remainder, ring, 0, WINDOW_SAMPLES - remainder)
+                        System.arraycopy(incoming, copyCount, ring, WINDOW_SAMPLES - remainder, remainder)
                     }
-                    sinceScore++
-                    if (filled == WINDOW_SAMPLES && sinceScore >= STEP_SAMPLES) {
-                        sinceScore = 0
-                        val score = score(ring)
-                        if (score >= THRESHOLD && System.currentTimeMillis() - lastDetectionAt >= DEBOUNCE_MS) {
-                            lastDetectionAt = System.currentTimeMillis()
-                            onStatus("ONNX Wake word တွေ့ပြီ", "confidence=%.3f".format(score))
-                            running.set(false)
-                            Handler(Looper.getMainLooper()).post { onDetected(score) }
-                            break
-                        }
+                } else {
+                    System.arraycopy(ring, count, ring, 0, WINDOW_SAMPLES - count)
+                    System.arraycopy(incoming, 0, ring, WINDOW_SAMPLES - count, count)
+                }
+                if (filled == WINDOW_SAMPLES) {
+                    val score = score(ring)
+                    if (score >= THRESHOLD && System.currentTimeMillis() - lastDetectionAt >= DEBOUNCE_MS) {
+                        lastDetectionAt = System.currentTimeMillis()
+                        onStatus("ONNX Wake word တွေ့ပြီ", "confidence=%.3f".format(score))
+                        running.set(false)
+                        Handler(Looper.getMainLooper()).post { onDetected(score) }
                     }
                 }
             }
