@@ -59,12 +59,12 @@ jobs:
         run: |
           set -euo pipefail
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
-          RUN_ID="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/workflows/train-burmese-wakeword.yml/runs?status=success&per_page=20" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .id' | head -n 1)"
+          RUN_ID="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/workflows/train-burmese-wakeword.yml/runs?status=success&per_page=20" | jq -r '[.workflow_runs[] | select(.conclusion == "success")][0].id // empty')"
           if [ -z "${RUN_ID}" ] || [ "${RUN_ID}" = "null" ]; then
             echo "::error::No successful Amara wake-word training run was found."
             exit 1
           fi
-          ARTIFACT_ID="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/runs/${RUN_ID}/artifacts" | jq -r '.artifacts[] | select(.name == "amara-burmese-wakeword-onnx" and .expired == false) | .id' | head -n 1)"
+          ARTIFACT_ID="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/runs/${RUN_ID}/artifacts" | jq -r '[.artifacts[] | select(.name == "amara-burmese-wakeword-onnx" and .expired == false)][0].id // empty')"
           if [ -z "${ARTIFACT_ID}" ] || [ "${ARTIFACT_ID}" = "null" ]; then
             echo "::error::The latest successful wake-word run has no unexpired ONNX artifact."
             exit 1
