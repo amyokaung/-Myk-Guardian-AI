@@ -97,7 +97,17 @@ class VedariWakeService : Service() {
                 openAppWithCommand(WAKE_ONLY_SENTINEL)
                 android.os.Handler(mainLooper).postDelayed({ startCommandRecognition() }, 2000L)
             },
-            onStatus = { status, detail -> recordDiagnostic(status, detail) }
+            onStatus = { status, detail ->
+                recordDiagnostic(status, detail)
+                if (status.contains("error", ignoreCase = true)) {
+                    onnxDetector = null
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
+                    android.os.Handler(mainLooper).post {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                    }
+                }
+            }
         ).also { it.start() }
     }
 
