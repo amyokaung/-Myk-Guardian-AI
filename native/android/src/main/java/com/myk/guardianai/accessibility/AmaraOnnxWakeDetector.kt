@@ -46,6 +46,7 @@ internal class AmaraOnnxWakeDetector(
 
     private val running = AtomicBoolean(false)
     @Volatile private var worker: Thread? = null
+    @Volatile private var activeRecorder: AudioRecord? = null
     @Volatile private var lastDetectionAt = 0L
     private var env: OrtEnvironment? = null
     private var melSession: OrtSession? = null
@@ -60,6 +61,7 @@ internal class AmaraOnnxWakeDetector(
     fun stop() {
         running.set(false)
         worker?.interrupt()
+        try { activeRecorder?.stop() } catch (_: Exception) {}
         worker = null
         closeSessions()
     }
@@ -84,6 +86,7 @@ internal class AmaraOnnxWakeDetector(
                 max(minBuffer, WINDOW_SAMPLES * 2)
             )
             if (recorder.state != AudioRecord.STATE_INITIALIZED) throw IllegalStateException("16 kHz AudioRecord ကို စတင်မရပါ")
+            activeRecorder = recorder
             recorder.startRecording()
             onStatus("ONNX Wake Word နားထောင်နေသည်", "16 kHz mono PCM · threshold=$THRESHOLD")
             val ring = ShortArray(WINDOW_SAMPLES)
@@ -129,6 +132,7 @@ internal class AmaraOnnxWakeDetector(
         } finally {
             try { recorder?.stop() } catch (_: Exception) {}
             try { recorder?.release() } catch (_: Exception) {}
+            activeRecorder = null
             closeSessions()
             running.set(false)
         }
@@ -140,7 +144,7 @@ internal class AmaraOnnxWakeDetector(
         fun asset(name: String): String {
             val destination = File(directory, name)
             if (!destination.exists() || destination.length() == 0L) {
-                assets.open("wakeword/$name").use { input -> destination.outputStream().use(input::copyTo) }
+                assets.open("wakeword/$name").use { input -> destination.outputStream().use { output -> input.copyTo(output) } }
             }
             return destination.absolutePath
         }
