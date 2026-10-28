@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 /**
- * LiveKit WakeWord classifier runner.
+ * LiveKit WakeWord classifier runner. CI/device validation is required before release.
  *
  * Training-compatible preprocessing:
  * 16 kHz mono PCM16 -> float32 / 32768 -> mel ONNX (output / 10 + 2)
