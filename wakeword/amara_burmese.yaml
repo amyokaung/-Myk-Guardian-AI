@@ -1,0 +1,44 @@
+# Initial smoke-test config for Burmese wake phrase "အမရာရေ".
+# This is a compact bootstrap model; validate with real recordings before lowering thresholds.
+model_name: amara_ye_burmese
+target_phrases:
+  - "အမရာရေ"
+tts_backend: voxcpm
+voxcpm_tts:
+  voice_design_prompts:
+    - "A Burmese woman speaking naturally in Burmese, clear mid-pitch voice, friendly and warm tone, moderate pace"
+    - "A Burmese man speaking naturally in Burmese, clear voice, gentle and friendly tone, moderate pace"
+    - "A Burmese woman speaking Burmese casually, slightly higher pitch, natural conversational pronunciation"
+  cfg_values: [2.0]
+  inference_timesteps_list: [10]
+n_samples: 24
+n_samples_val: 8
+n_background_samples: 40
+n_background_samples_val: 8
+tts_batch_size: 2
+custom_negative_phrases:
+  - "အမရာ"
+  - "အမရ"
+  - "မရာရေ"
+  - "ဟယ်လို"
+  - "နေကောင်းလား"
+data_dir: ./data
+output_dir: ./output
+augmentation:
+  clip_duration: 2.0
+  batch_size: 8
+  rounds: 2
+  background_paths: [./data/backgrounds]
+  rir_paths: [./data/rirs]
+model:
+  model_type: conv_attention
+  model_size: tiny
+steps: 500
+learning_rate: 0.001
+max_negative_weight: 1000
+target_fp_per_hour: 1.0
+batch_n_per_class:
+  positive: 10
+  adversarial_negative: 10
+  ACAV100M_sample: 64
+  background_noise: 10
