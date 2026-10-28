@@ -15,6 +15,16 @@ const appGradle = ['build.gradle', 'build.gradle.kts']
   .find(file => fs.existsSync(file));
 if (!appGradle) throw new Error('Could not find app/build.gradle or app/build.gradle.kts.');
 let gradle = fs.readFileSync(appGradle, 'utf8');
+
+if (!gradle.includes('com.microsoft.onnxruntime:onnxruntime-android')) {
+  const onnxDependency = appGradle.endsWith('.kts')
+    ? '    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")'
+    : "    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'";
+  if (!/dependencies\\s*\\{/.test(gradle)) throw new Error('Could not find dependencies block to add ONNX Runtime Android.');
+  gradle = gradle.replace(/dependencies\\s*\\{/, match => match + '\\n' + onnxDependency);
+  fs.writeFileSync(appGradle, gradle);
+}
+
 if (!gradle.includes('org.jetbrains.kotlin.android') && !gradle.includes('kotlin-android')) {
   if (appGradle.endsWith('.kts')) {
     if (!/plugins\s*\{/.test(gradle)) throw new Error('Could not find plugins block in app/build.gradle.kts.');
@@ -39,7 +49,7 @@ if (!gradle.includes('org.jetbrains.kotlin.android') && !gradle.includes('kotlin
 const sourceRoot = path.join(root, 'native/android/src/main');
 const packagePath = path.join(appMain, 'java/com/myk/guardianai/accessibility');
 fs.mkdirSync(packagePath, { recursive: true });
-for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt', 'VedariWakeService.kt']) {
+for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt', 'VedariWakeService.kt', 'AmaraOnnxWakeDetector.kt']) {
   fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility', name), path.join(packagePath, name));
 }
 for (const [from, to] of [
@@ -163,4 +173,4 @@ if (!alreadyRegistered && !isJava) {
   }
 }
 fs.writeFileSync(activity, source);
-console.log('Kotlin compilation enabled; Accessibility service files installed, manifest configured, and Capacitor plugin registered.');
+console.log('Kotlin compilation enabled; ONNX Runtime added; native services, wake detector, manifest and Capacitor plugin configured.');
