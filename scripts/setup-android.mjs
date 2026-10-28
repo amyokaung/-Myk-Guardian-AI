@@ -20,8 +20,8 @@ if (!gradle.includes('com.microsoft.onnxruntime:onnxruntime-android')) {
   const onnxDependency = appGradle.endsWith('.kts')
     ? '    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")'
     : "    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'";
-  if (!/dependencies\\s*\\{/.test(gradle)) throw new Error('Could not find dependencies block to add ONNX Runtime Android.');
-  gradle = gradle.replace(/dependencies\\s*\\{/, match => match + '\\n' + onnxDependency);
+  if (!gradle.includes('dependencies {')) throw new Error('Could not find dependencies block to add ONNX Runtime Android.');
+  gradle = gradle.replace('dependencies {', 'dependencies {\n' + onnxDependency);
   fs.writeFileSync(appGradle, gradle);
 }
 
