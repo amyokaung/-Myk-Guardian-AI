@@ -1,4 +1,5 @@
 name: Build AMARA AI APK
+# Re-trigger CI to validate the latest ONNX wake-word integration.
 on:
   workflow_dispatch:
   push:
