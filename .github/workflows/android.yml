@@ -27,6 +27,7 @@ on:
       - '.github/workflows/android.yml'
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -52,6 +53,31 @@ jobs:
           npx cap sync android
       - name: Install native Android integration
         run: npm run android:setup
+      - name: Install Amara ONNX wake-word models
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          RUN_ID="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/workflows/train-burmese-wakeword.yml/runs?status=success&per_page=20" | jq -r '.workflow_runs[] | select(.conclusion == "success") | .id' | head -n 1)"
+          if [ -z "${RUN_ID}" ] || [ "${RUN_ID}" = "null" ]; then
+            echo "::error::No successful Amara wake-word training run was found."
+            exit 1
+          fi
+          ARTIFACT_ID="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/runs/${RUN_ID}/artifacts" | jq -r '.artifacts[] | select(.name == "amara-burmese-wakeword-onnx" and .expired == false) | .id' | head -n 1)"
+          if [ -z "${ARTIFACT_ID}" ] || [ "${ARTIFACT_ID}" = "null" ]; then
+            echo "::error::The latest successful wake-word run has no unexpired ONNX artifact."
+            exit 1
+          fi
+          mkdir -p /tmp/amara-wakeword android/app/src/main/assets/wakeword
+          curl -fsSL -L -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" "${API}/actions/artifacts/${ARTIFACT_ID}/zip" -o /tmp/amara-wakeword/model.zip
+          unzip -p /tmp/amara-wakeword/model.zip 'output/amara_ye_burmese/amara_ye_burmese.onnx' > android/app/src/main/assets/wakeword/amara_ye_burmese.onnx
+          curl -fsSL https://raw.githubusercontent.com/livekit/livekit-wakeword/main/src/livekit/wakeword/resources/melspectrogram.onnx -o android/app/src/main/assets/wakeword/melspectrogram.onnx
+          curl -fsSL https://raw.githubusercontent.com/livekit/livekit-wakeword/main/src/livekit/wakeword/resources/embedding_model.onnx -o android/app/src/main/assets/wakeword/embedding_model.onnx
+          test -s android/app/src/main/assets/wakeword/amara_ye_burmese.onnx
+          test -s android/app/src/main/assets/wakeword/melspectrogram.onnx
+          test -s android/app/src/main/assets/wakeword/embedding_model.onnx
+          echo "Wake-word classifier and both training-compatible feature models installed."
       - name: Build debug APK
         run: |
           cd android
