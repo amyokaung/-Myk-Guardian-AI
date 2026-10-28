@@ -30,6 +30,7 @@ class VedariWakeService : Service() {
     private var textToSpeech: TextToSpeech? = null
     private var ttsReady = false
     private var pendingWakeAck = false
+    private var onnxDetector: AmaraOnnxWakeDetector? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -83,6 +84,24 @@ class VedariWakeService : Service() {
     }
 
     private fun startRecognition() {
+        if (onnxDetector != null) return
+        onnxDetector = AmaraOnnxWakeDetector(
+            context = applicationContext,
+            onDetected = { confidence ->
+                onnxDetector = null
+                awaitingCommand = true
+                savePendingCommand(WAKE_ONLY_SENTINEL)
+                recordDiagnostic("ONNX Wake word တွေ့ပြီ — တုံ့ပြန်နေသည်", "confidence=%.3f".format(confidence))
+                wakeScreenBriefly()
+                acknowledgeWake()
+                openAppWithCommand(WAKE_ONLY_SENTINEL)
+                android.os.Handler(mainLooper).postDelayed({ startCommandRecognition() }, 1200L)
+            },
+            onStatus = { status, detail -> recordDiagnostic(status, detail) }
+        ).also { it.start() }
+    }
+
+    private fun startCommandRecognition() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -116,37 +135,16 @@ class VedariWakeService : Service() {
                             .putString(LAST_HEARD, candidates.joinToString(" / ").take(240))
                             .putLong(LAST_EVENT_AT, System.currentTimeMillis())
                             .apply()
-                        // Search all alternatives. Burmese ASR often puts the best wake phrase
-                        // in candidate 2 or 3 rather than candidate 1.
-                        val wakeCandidate = candidates.firstOrNull { isWakeCommand(it) }
-                        if (awaitingCommand) {
-                            val command = candidates.firstOrNull().orEmpty()
-                            awaitingCommand = false
-                            if (command.isNotBlank()) {
-                                savePendingCommand(command)
-                                recordDiagnostic("အမိန့်ရရှိပြီး", command)
-                                wakeScreenBriefly()
-                                openAppWithCommand(command)
-                            } else {
-                                recordDiagnostic("အမိန့်မကြားရ", "နောက်တစ်ကြိမ် ပြောပါ")
-                            }
-                        } else if (wakeCandidate != null) {
-                            val command = removeWakePhrase(wakeCandidate)
-                            wakeScreenBriefly()
-                            if (command.isBlank()) {
-                                // Wake phrase alone: acknowledge, then listen for the next utterance.
-                                awaitingCommand = true
-                                savePendingCommand(WAKE_ONLY_SENTINEL)
-                                recordDiagnostic("Wake word တွေ့ပြီ — တုံ့ပြန်နေသည်", wakeCandidate)
-                                acknowledgeWake()
-                                openAppWithCommand(WAKE_ONLY_SENTINEL)
-                            } else {
-                                savePendingCommand(command)
-                                recordDiagnostic("Wake word + အမိန့်တွေ့ပြီ", command)
-                                openAppWithCommand(command)
-                            }
+                        // The ONNX model detects the wake phrase. SpeechRecognizer is now
+                        // command-only, so it cannot accidentally replace ONNX detection.
+                        val command = candidates.firstOrNull().orEmpty()
+                        awaitingCommand = false
+                        if (command.isNotBlank()) {
+                            savePendingCommand(command)
+                            recordDiagnostic("အမိန့်ရရှိပြီး", command)
+                            openAppWithCommand(command)
                         } else {
-                            recordDiagnostic("Wake word မတွေ့ပါ", candidates.firstOrNull().orEmpty())
+                            recordDiagnostic("အမိန့်မကြားရ", "နောက်တစ်ကြိမ် ပြောပါ")
                         }
                         scheduleRestart()
                     }
@@ -246,8 +244,9 @@ class VedariWakeService : Service() {
         restarting = true
         android.os.Handler(mainLooper).postDelayed({
             restarting = false
-            if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) startRecognition()
-            else stopSelf()
+            if (getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(ENABLED, false)) {
+                if (awaitingCommand) startCommandRecognition() else startRecognition()
+            } else stopSelf()
         }, RESTART_DELAY_MS)
     }
 
@@ -280,6 +279,8 @@ class VedariWakeService : Service() {
     }
 
     private fun stopRecognition() {
+        onnxDetector?.stop()
+        onnxDetector = null
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(ENABLED, false).apply()
         try { recognizer?.cancel() } catch (_: Exception) {}
         try { recognizer?.destroy() } catch (_: Exception) {}
@@ -306,6 +307,8 @@ class VedariWakeService : Service() {
     }
 
     override fun onDestroy() {
+        onnxDetector?.stop()
+        onnxDetector = null
         try { recognizer?.cancel() } catch (_: Exception) {}
         try { recognizer?.destroy() } catch (_: Exception) {}
         recognizer = null
