@@ -74,6 +74,7 @@ internal class AmaraOnnxWakeDetector(
             }
             onStatus("ONNX model စတင်ဖွင့်နေသည်", "Audio preprocessing + classifier ကို စစ်ဆေးနေသည်")
             loadSessions()
+            if (!running.get()) return
             val minBuffer = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT
             )
@@ -213,8 +214,8 @@ internal class AmaraOnnxWakeDetector(
         val values = ArrayList<Float>()
         fun visit(item: Any?) {
             when (item) {
-                is FloatArray -> item.forEach(values::add)
-                is Array<*> -> item.forEach(::visit)
+                is FloatArray -> item.forEach { values.add(it) }
+                is Array<*> -> item.forEach { visit(it) }
                 is Number -> values.add(item.toFloat())
             }
         }
