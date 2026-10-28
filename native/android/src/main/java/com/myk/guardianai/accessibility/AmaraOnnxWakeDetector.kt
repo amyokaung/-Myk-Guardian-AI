@@ -63,7 +63,6 @@ internal class AmaraOnnxWakeDetector(
         worker?.interrupt()
         try { activeRecorder?.stop() } catch (_: Exception) {}
         worker = null
-        closeSessions()
     }
 
     private fun runLoop() {
