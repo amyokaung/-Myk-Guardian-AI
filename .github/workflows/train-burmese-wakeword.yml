@@ -2,6 +2,11 @@ name: Train Burmese Amara Wake Word
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'wakeword/amara_burmese.yaml'
+      - '.github/workflows/train-burmese-wakeword.yml'
 
 permissions:
   contents: read
