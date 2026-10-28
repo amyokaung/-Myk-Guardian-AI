@@ -1,5 +1,7 @@
 package com.myk.guardianai.accessibility
 
+// CI validation marker: build the latest ONNX wake-word integration before device testing.
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
