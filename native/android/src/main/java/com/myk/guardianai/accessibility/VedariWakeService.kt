@@ -95,7 +95,7 @@ class VedariWakeService : Service() {
                 wakeScreenBriefly()
                 acknowledgeWake()
                 openAppWithCommand(WAKE_ONLY_SENTINEL)
-                android.os.Handler(mainLooper).postDelayed({ startCommandRecognition() }, 1200L)
+                android.os.Handler(mainLooper).postDelayed({ startCommandRecognition() }, 2000L)
             },
             onStatus = { status, detail -> recordDiagnostic(status, detail) }
         ).also { it.start() }
