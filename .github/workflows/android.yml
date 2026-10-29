@@ -3,7 +3,7 @@ name: Build AMARA AI APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, feature/holographic-brain-file-import]
     paths:
       - 'src/**'
       - 'native/**'
