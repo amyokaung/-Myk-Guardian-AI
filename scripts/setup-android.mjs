@@ -121,7 +121,8 @@ const serviceDeclarations = `
         </service>`;
 if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService') ||
     !manifest.includes('com.myk.guardianai.accessibility.MyNotificationListenerService') ||
-    !manifest.includes('com.myk.guardianai.accessibility.VedariWakeService') ||\n    !manifest.includes('com.myk.guardianai.accessibility.FloatingWidgetService')) {
+    !manifest.includes('com.myk.guardianai.accessibility.VedariWakeService') ||
+    !manifest.includes('com.myk.guardianai.accessibility.FloatingWidgetService')) {
   const declarations = serviceDeclarations
     .split('</service>').filter(Boolean).map(part => part.trim() + '</service>').filter(part => {
       const match = part.match(/android:name="([^"]+)"/);
