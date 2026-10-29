@@ -102,7 +102,7 @@ class VedariWakeService : Service() {
                 onnxDetector = null
                 awaitingCommand = true
                 savePendingCommand(WAKE_ONLY_SENTINEL)
-                recordDiagnostic("ONNX Wake word တွေ့ပြီ — တုံ့ပြန်နေသည်", "confidence=%.3f".format(confidence))
+                recordDiagnostic("ONNX Wake word တွေ့ပြီ — တုံ့ပြန်နေသည်", "confidence=%.3f".format(confidence))\n                showFloatingOverlay("အမရာ နားထောင်နေပါတယ်", "အမိန့်ကို ပြောပါနော်။")
                 // Wake acknowledgement must not steal the user's current screen.
                 // Keep the current app visible and listen for the actual command.
                 wakeScreenBriefly()
@@ -163,7 +163,7 @@ class VedariWakeService : Service() {
                         awaitingCommand = false
                         if (command.isNotBlank()) {
                             savePendingCommand(command)
-                            recordDiagnostic("အမိန့်ရရှိပြီး", command)
+                            recordDiagnostic("အမိန့်ရရှိပြီး", command)\n                            showFloatingOverlay("အမိန့်ရရှိပြီး", command)
                             // Do not force-switch to AMARA Chat from another app.
                             // Explicit app-launch requests are executed directly; other
                             // commands remain pending for the foreground assistant/overlay.
@@ -330,7 +330,7 @@ class VedariWakeService : Service() {
         }
     }
 
-    private fun openAppWithCommand(command: String) {
+    private fun showFloatingOverlay(status: String, detail: String) {\n        try {\n            val overlay = Intent(this, FloatingWidgetService::class.java)\n                .setAction(FloatingWidgetService.ACTION_SHOW)\n                .putExtra(FloatingWidgetService.EXTRA_STATUS, status)\n                .putExtra(FloatingWidgetService.EXTRA_DETAIL, detail)\n            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(overlay) else startService(overlay)\n        } catch (error: Exception) {\n            recordDiagnostic(status, "$detail (Overlay မဖွင့်နိုင်ပါ: ${error.message})")\n        }\n    }\n\n    private fun openAppWithCommand(command: String) {
         val launch = packageManager.getLaunchIntentForPackage(packageName) ?: return
         launch.addFlags(
             Intent.FLAG_ACTIVITY_NEW_TASK or
