@@ -38,15 +38,26 @@ class VedariWakeService : Service() {
         textToSpeech = TextToSpeech(applicationContext) { status ->
             ttsReady = status == TextToSpeech.SUCCESS
             if (ttsReady) {
-                // Prefer Burmese, but deliberately fall back to English if Burmese voice data is missing.
+                // Prefer Burmese when the installed engine supports it. Otherwise select
+                // the best-quality installed English voice instead of accepting an arbitrary default.
                 val result = textToSpeech?.setLanguage(Locale.forLanguageTag("my-MM"))
                 if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
                     val englishResult = textToSpeech?.setLanguage(Locale.US)
                     if (englishResult == TextToSpeech.LANG_MISSING_DATA || englishResult == TextToSpeech.LANG_NOT_SUPPORTED) {
                         ttsReady = false
                         recordDiagnostic("TTS voice မရရှိပါ", "Install/enable an English Text-to-Speech voice in Android settings.")
+                    } else {
+                        try {
+                            val bestEnglishVoice = textToSpeech?.voices
+                                ?.filter { it.locale.language == "en" && !it.isNetworkConnectionRequired }
+                                ?.maxByOrNull { it.quality }
+                            if (bestEnglishVoice != null) textToSpeech?.voice = bestEnglishVoice
+                        } catch (_: Exception) { /* Keep the engine's supported English default. */ }
                     }
                 }
+                // Slightly slower, neutral-pitch delivery sounds less clipped on common Android TTS engines.
+                textToSpeech?.setSpeechRate(0.90f)
+                textToSpeech?.setPitch(1.0f)
                 if (ttsReady && pendingWakeAck) {
                     pendingWakeAck = false
                     acknowledgeWake()
