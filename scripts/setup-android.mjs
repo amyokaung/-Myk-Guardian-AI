@@ -103,9 +103,13 @@ const serviceDeclarations = `
         </service>
         <service
             android:name="com.myk.guardianai.accessibility.VedariWakeService"
-            android:label="Vedari Voice Assistant"
+            android:label="AMARA Wake Word Assistant"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+        <service
+            android:name="com.myk.guardianai.accessibility.FloatingWidgetService"
+            android:label="AMARA AI Floating Assistant"
+            android:exported="false" />
         <service
             android:name="com.myk.guardianai.accessibility.MyNotificationListenerService"
             android:label="AMARA AI Notification Access"
@@ -174,4 +178,4 @@ if (!alreadyRegistered && !isJava) {
   }
 }
 fs.writeFileSync(activity, source);
-console.log('Kotlin compilation enabled; ONNX Runtime added; native services, wake detector, manifest and Capacitor plugin configured.');
+console.log('Kotlin compilation enabled; ONNX Runtime added; native services, wake detector, floating overlay, manifest and Capacitor plugin configured.');
