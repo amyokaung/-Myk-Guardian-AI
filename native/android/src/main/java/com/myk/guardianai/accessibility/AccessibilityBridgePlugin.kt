@@ -12,6 +12,8 @@ import android.provider.Settings
 import android.content.pm.PackageManager
 import android.location.Geocoder
 import android.provider.AlarmClock
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 import android.os.Build
 import android.os.Environment
@@ -42,6 +44,54 @@ import com.getcapacitor.annotation.PermissionCallback
     ]
 )
 class AccessibilityBridgePlugin : Plugin() {
+    @PluginMethod
+    fun speakText(call: PluginCall) {
+        val text = call.getString("text")?.trim().orEmpty()
+        if (text.isBlank()) {
+            call.reject("ပြောရန် စာသားမပါပါ။")
+            return
+        }
+        try {
+            val engine = TextToSpeech(context) { status ->
+                if (status != TextToSpeech.SUCCESS) {
+                    call.reject("Android Text-to-Speech engine မစတင်နိုင်ပါ။")
+                    return@TextToSpeech
+                }
+                val myResult = engine.setLanguage(Locale.forLanguageTag("my-MM"))
+                val language = if (myResult == TextToSpeech.LANG_MISSING_DATA || myResult == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    engine.setLanguage(Locale.US)
+                    "en"
+                } else "my"
+                engine.setSpeechRate(0.92f)
+                engine.setPitch(1.0f)
+                engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+                    override fun onDone(utteranceId: String?) {
+                        engine.shutdown()
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        engine.shutdown()
+                    }
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        engine.shutdown()
+                    }
+                })
+                val result = engine.speak(text.take(3500), TextToSpeech.QUEUE_FLUSH, null, "amara-reply-${System.currentTimeMillis()}")
+                if (result == TextToSpeech.ERROR) {
+                    engine.shutdown()
+                    call.reject("Android TTS က စာသားကို အသံထွက်မပေးနိုင်ပါ။")
+                } else {
+                    val response = JSObject()
+                    response.put("success", true)
+                    response.put("language", language)
+                    call.resolve(response)
+                }
+            }
+        } catch (error: Exception) {
+            call.reject("အသံဖြင့် ပြန်မပြောနိုင်ပါ: ${error.message}", error)
+        }
+    }
     @PluginMethod
     fun saveTextFile(call: PluginCall) {
         val fileName = call.getString("fileName")?.trim().orEmpty()
