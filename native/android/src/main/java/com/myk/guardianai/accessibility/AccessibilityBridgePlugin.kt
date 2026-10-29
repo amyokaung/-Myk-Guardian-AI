@@ -484,10 +484,41 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     @PluginMethod
+    fun isOverlayPermissionGranted(call: PluginCall) {
+        val result = JSObject()
+        result.put("granted", Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(context))
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun openOverlayPermissionSettings(call: PluginCall) {
+        try {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + context.packageName)
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            call.resolve()
+        } catch (error: Exception) {
+            call.reject("Floating Overlay ခွင့်ပြုချက် Settings ကို မဖွင့်နိုင်ပါ: ${error.message}", error)
+        }
+    }
+
+    @PluginMethod
     fun startVedariWakeListening(call: PluginCall) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             call.reject("အမရာရေ Wake Word နားထောင်ရန် Microphone permission လိုအပ်ပါတယ်။ အရင် Allow လုပ်ပါ။")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
+            try {
+                context.startActivity(Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + context.packageName)
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) {}
+            call.reject("AMARA Floating Overlay ကို အသုံးပြုရန် Display over other apps ခွင့်ပြုချက်ကို Allow လုပ်ပြီး Wake Word ကို ပြန်ဖွင့်ပါ။")
             return
         }
         try {
