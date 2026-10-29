@@ -103,10 +103,11 @@ class VedariWakeService : Service() {
                 awaitingCommand = true
                 savePendingCommand(WAKE_ONLY_SENTINEL)
                 recordDiagnostic("ONNX Wake word တွေ့ပြီ — တုံ့ပြန်နေသည်", "confidence=%.3f".format(confidence))
+                // Wake acknowledgement must not steal the user's current screen.
+                // Keep the current app visible and listen for the actual command.
                 wakeScreenBriefly()
                 acknowledgeWake()
-                openAppWithCommand(WAKE_ONLY_SENTINEL)
-                android.os.Handler(mainLooper).postDelayed({ startCommandRecognition() }, 2000L)
+                android.os.Handler(mainLooper).postDelayed({ startCommandRecognition() }, 900L)
             },
             onStatus = { status, detail ->
                 recordDiagnostic(status, detail)
@@ -163,7 +164,17 @@ class VedariWakeService : Service() {
                         if (command.isNotBlank()) {
                             savePendingCommand(command)
                             recordDiagnostic("အမိန့်ရရှိပြီး", command)
-                            openAppWithCommand(command)
+                            // Do not force-switch to AMARA Chat from another app.
+                            // Explicit app-launch requests are executed directly; other
+                            // commands remain pending for the foreground assistant/overlay.
+                            val targetApp = requestedAppName(command)
+                            if (targetApp != null) {
+                                launchRequestedApp(targetApp)
+                            } else if (MyAccessibilityService.instance()?.activeWindowPackageName() == packageName) {
+                                openAppWithCommand(command)
+                            } else {
+                                recordDiagnostic("အမိန့်ကို ကြားပြီးပါပြီ", "လက်ရှိ app မပြောင်းဘဲ command ကို သိမ်းထားသည်: $command")
+                            }
                         } else {
                             recordDiagnostic("အမိန့်မကြားရ", "နောက်တစ်ကြိမ် ပြောပါ")
                         }
@@ -269,6 +280,54 @@ class VedariWakeService : Service() {
                 if (awaitingCommand) startCommandRecognition() else startRecognition()
             } else stopSelf()
         }, RESTART_DELAY_MS)
+    }
+
+    private fun requestedAppName(command: String): String? {
+        val normalized = command.lowercase(Locale.ROOT)
+        val explicitlyOpening = listOf("ဖွင့်", "ဖွင္", "ဖွင့်", "ဖွင့်ပေး", "ဖွင္႔", "open ", "launch ", "start ")
+            .any { normalized.contains(it) }
+        if (!explicitlyOpening) return null
+        return when {
+            normalized.contains("youtube") || normalized.contains("ယူကျု") || normalized.contains("ယူကျူး") -> "YouTube"
+            normalized.contains("facebook") || normalized.contains("ဖေ့စ်ဘွတ်") -> "Facebook"
+            normalized.contains("messenger") || normalized.contains("မက်ဆင်ဂျာ") -> "Messenger"
+            normalized.contains("chrome") || normalized.contains("ဘရောက်ဇာ") -> "Chrome"
+            normalized.contains("maps") || normalized.contains("map") || normalized.contains("မြေပုံ") -> "Maps"
+            normalized.contains("settings") || normalized.contains("ဆက်တင်") -> "Settings"
+            normalized.contains("camera") || normalized.contains("ကင်မရာ") -> "Camera"
+            normalized.contains("phone") || normalized.contains("ဖုန်းခေါ်") -> "Phone"
+            else -> null
+        }
+    }
+
+    private fun launchRequestedApp(appName: String) {
+        try {
+            val pm = packageManager
+            val intent = when (appName) {
+                "Settings" -> Intent(android.provider.Settings.ACTION_SETTINGS)
+                "Camera" -> Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+                else -> {
+                    val matches = pm.queryIntentActivities(
+                        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0
+                    )
+                    val match = matches.firstOrNull {
+                        val label = pm.getApplicationLabel(it.activityInfo.applicationInfo).toString()
+                        label.equals(appName, ignoreCase = true) ||
+                            label.contains(appName, ignoreCase = true)
+                    }
+                    match?.let { Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                        .setClassName(it.activityInfo.packageName, it.activityInfo.name) }
+                }
+            } ?: run {
+                recordDiagnostic("App မတွေ့ပါ", "$appName ကို ဖုန်းထဲမှာ မတွေ့ပါ။")
+                return
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            recordDiagnostic("App ဖွင့်လိုက်ပါပြီ", appName)
+        } catch (error: Exception) {
+            recordDiagnostic("App ဖွင့်မရပါ", error.message ?: appName)
+        }
     }
 
     private fun openAppWithCommand(command: String) {
