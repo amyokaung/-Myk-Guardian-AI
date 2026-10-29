@@ -43,8 +43,15 @@ window.addEventListener('amara-native-back', () => {
     document.body.classList.remove('drawer-open');
     return;
   }
-  if (activeTab !== 'chat') {
+  // Prefer the actual in-app navigation stack, even when the current page is Chat.
+  // This prevents Back from becoming a no-op merely because Chat is the active tab.
+  if (tabHistory.length > 0) {
     activeTab = tabHistory.pop() || 'chat';
+    render();
+    return;
+  }
+  if (activeTab !== 'chat') {
+    activeTab = 'chat';
     render();
   }
 });
@@ -739,7 +746,7 @@ function renderPermissions(view: HTMLElement, perms: Record<string, boolean>) {
     catch (err) { alert('Notification Settings မဖွင့်နိုင်ပါ: ' + (err instanceof Error ? err.message : 'unknown error')); }
   });
   view.querySelector<HTMLButtonElement>('#testBack')!.addEventListener('click', async () => {
-    if (!confirm('Back action ကို အခုလုပ်မလား? လက်ရှိစာမျက်နှာကနေ ထွက်သွားနိုင်ပါတယ်။')) return;
+    if (!confirm('Back Action ကို အခုစမ်းသပ်မလား? AMARA အတွင်းရှိလျှင် ယခင်စာမျက်နှာသို့ ပြန်သွားပါမည်။')) return;
     try {
       const status = await MykNative.getStatus();
       if (!status.accessibilityEnabled) {
