@@ -217,6 +217,14 @@ export async function tryNativeCommand(command: string): Promise<string | null> 
   // Keep song-search requests available to the existing music flow.
   const openVerb = /(ဖွင့်|ဖွင့်|ဖွင့္|open|launch)/i.test(text);
   const isSongRequest = /(သီချင်း|song|music|track)/i.test(text);
+  if (isSongRequest && openVerb) {
+    const songQuery = text
+      .replace(/youtube|ယူကျုး?|ယူကျူး|ယူကျူ/gi, ' ')
+      .replace(/(?:ထဲက|ထဲမှာ|ပေါ်မှာ|မှာ|ကနေ|ကို|တစ်ပုဒ်|သီချင်း|သီခ်င္း|သီချင်းလေး|သီချင်းတစ်ပုဒ်|song|music|track|ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်လိုက်|ဖွင့်|ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်ပါ|ဖွင့်|ဖွင့္ပါ|ဖွင့္|play|search|find|on youtube|in youtube|please|the|a|some)/gi, ' ')
+      .replace(/[၊,။.!?]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (songQuery.length < 2) return 'ဘယ်သီချင်းကို ဖွင့်ပေးရမလဲ။ သီချင်းအမည် ဒါမှမဟုတ် အဆိုတော်အမည်ကို ပြောပေးပါနော်။';
+    return executeAgentAction('search_youtube', { query: songQuery });
+  }
   if (openVerb && !isSongRequest && /(youtube|ယူကျု|ယူကျူး)/i.test(text)) {
     return executeAgentAction('open_app', { app: 'YouTube' });
   }
