@@ -49,7 +49,7 @@ if (!gradle.includes('org.jetbrains.kotlin.android') && !gradle.includes('kotlin
 const sourceRoot = path.join(root, 'native/android/src/main');
 const packagePath = path.join(appMain, 'java/com/myk/guardianai/accessibility');
 fs.mkdirSync(packagePath, { recursive: true });
-for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt', 'VedariWakeService.kt', 'AmaraOnnxWakeDetector.kt']) {
+for (const name of ['MyAccessibilityService.kt', 'MyNotificationListenerService.kt', 'AccessibilityBridgePlugin.kt', 'VedariWakeService.kt', 'AmaraOnnxWakeDetector.kt', 'FloatingWidgetService.kt']) {
   fs.copyFileSync(path.join(sourceRoot, 'java/com/myk/guardianai/accessibility', name), path.join(packagePath, name));
 }
 for (const [from, to] of [
@@ -80,6 +80,7 @@ const requiredPermissions = [
   'android.permission.FOREGROUND_SERVICE',
   'android.permission.FOREGROUND_SERVICE_MICROPHONE',
   'android.permission.WAKE_LOCK',
+  'android.permission.SYSTEM_ALERT_WINDOW',
   'com.android.alarm.permission.SET_ALARM'
 ];
 for (const permission of requiredPermissions) {
@@ -116,7 +117,7 @@ const serviceDeclarations = `
         </service>`;
 if (!manifest.includes('com.myk.guardianai.accessibility.MyAccessibilityService') ||
     !manifest.includes('com.myk.guardianai.accessibility.MyNotificationListenerService') ||
-    !manifest.includes('com.myk.guardianai.accessibility.VedariWakeService')) {
+    !manifest.includes('com.myk.guardianai.accessibility.VedariWakeService') ||\n    !manifest.includes('com.myk.guardianai.accessibility.FloatingWidgetService')) {
   const declarations = serviceDeclarations
     .split('</service>').filter(Boolean).map(part => part.trim() + '</service>').filter(part => {
       const match = part.match(/android:name="([^"]+)"/);
