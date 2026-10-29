@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { speakText(options: { text: string }): Promise<{success:boolean;language?:string}>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -22,6 +22,16 @@ const readModelCatalog = (): ModelPrice[] => { try { const v=JSON.parse(localSto
 const money = (v:number) => '$'+v.toFixed(v<0.01?6:4);
 function recordOpenRouterUsage(model:string,data:any){const usage=data?.usage;if(!usage)return;const promptTokens=Number(usage.prompt_tokens||usage.input_tokens||0),completionTokens=Number(usage.completion_tokens||usage.output_tokens||0);const all=readUsage(),entry=all[model]||{promptTokens:0,completionTokens:0,requests:0,costUsd:0,costKnown:false};const price=readModelCatalog().find(m=>m.id===model)?.pricing;const pr=Number(price?.prompt),cr=Number(price?.completion),reported=Number(usage.cost);let cost=0,known=false;if(usage.cost!==undefined&&Number.isFinite(reported)){cost=reported;known=true;}else if(price?.prompt!==undefined&&price?.completion!==undefined&&Number.isFinite(pr)&&Number.isFinite(cr)){cost=promptTokens*pr+completionTokens*cr;known=true;}entry.promptTokens+=promptTokens;entry.completionTokens+=completionTokens;entry.requests+=1;if(known){entry.costUsd+=cost;entry.costKnown=true;}all[model]=entry;localStorage.setItem(USAGE_NAME,JSON.stringify(all));}
 function modelPriceLabel(model:ModelPrice){const p=model.pricing;if(!p||p.prompt===undefined||p.completion===undefined)return 'ဈေးနှုန်း မရရှိ';const input=Number(p.prompt)*1000000,output=Number(p.completion)*1000000;return Number.isFinite(input)&&Number.isFinite(output)?'Input '+money(input)+'/1M · Output '+money(output)+'/1M tokens':'ဈေးနှုန်း မရရှိ';}
+// Shared reply voice: use Android TextToSpeech in the APK; if unavailable, keep text chat usable.
+let speechRequest = 0;
+async function speakReply(text: string): Promise<void> {
+  const clean = String(text || '').replace(/\[\[AMARA_MAP:[^\]]+\]\]/g, '').trim();
+  if (!clean || !/Android|Capacitor/i.test(navigator.userAgent)) return;
+  const request = ++speechRequest;
+  try { await MykNative.speakText({ text: clean.slice(0, 3500) }); }
+  catch (error) { console.warn('AMARA TTS unavailable; text reply remains available.', error); }
+  void request;
+}
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
 const readPerms = (): Record<string, boolean> => {
@@ -395,7 +405,9 @@ async function consumePendingWakeCommand() {
     if (!pending.command) return;
     if (pending.command === '__VEDARI_WAKE_ONLY__' || pending.command === '__AMARA_WAKE_ONLY__') {
       if (activeTab !== 'chat') { activeTab = 'chat'; render(); }
-      messages.push({ role: 'assistant', content: 'ဟုတ်ကဲ့၊ အမရာဒီမှာရှိပါတယ်။ 😊 မင်းခိုင်းချင်တာကို ဆက်ပြောလိုက်နော်။' });
+      const greeting = 'ဟုတ်ကဲ့၊ အမရာဒီမှာရှိပါတယ်။ 😊 မင်းခိုင်းချင်တာကို ဆက်ပြောလိုက်နော်။';
+      messages.push({ role: 'assistant', content: greeting });
+      void speakReply(greeting);
       persistCurrentChat();
       if (activeTab === 'chat') render();
       return;
@@ -490,9 +502,9 @@ function renderChat(view: HTMLElement) {
     messages.push({role:'user',content:userText});persistCurrentChat();busy=true;render();
     try {
       const actionResult=await tryNativeCommand(text);
-      if(actionResult){messages.push({role:'assistant',content:actionResult});try{await saveAutoMemory(userText,actionResult);await updateProfileMemory(userText);}catch(e){console.warn('AMARA auto-memory save skipped',e);}busy=false;persistCurrentChat();render();return;}
+      if(actionResult){messages.push({role:'assistant',content:actionResult});void speakReply(actionResult);try{await saveAutoMemory(userText,actionResult);await updateProfileMemory(userText);}catch(e){console.warn('AMARA auto-memory save skipped',e);}busy=false;persistCurrentChat();render();return;}
     } catch(err) {
-      const failure='လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။');messages.push({role:'assistant',content:failure});try{await saveAutoMemory(userText,failure);await updateProfileMemory(userText);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
+      const failure='လုပ်ဆောင်ချက် မအောင်မြင်ပါ။ '+(err instanceof Error?err.message:'အမှားတစ်ခု ဖြစ်နေပါတယ်။');messages.push({role:'assistant',content:failure});void speakReply(failure);try{await saveAutoMemory(userText,failure);await updateProfileMemory(userText);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
       busy=false;persistCurrentChat();render();return;
     }
     await askAI();
@@ -559,11 +571,11 @@ async function askAI() {
         answer = followData?.choices?.[0]?.message?.content?.trim() || result;
       } else answer = typeof message?.content === 'string' ? message.content.trim() : '';
     }
-    const finalAnswer=answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။';messages.push({ role: 'assistant', content: finalAnswer });
+    const finalAnswer=answer || 'AI က စာသားအဖြေမပြန်ပေးခဲ့ပါ။ Model သို့မဟုတ် API Key ကို စစ်ဆေးပါ။';messages.push({ role: 'assistant', content: finalAnswer }); void speakReply(finalAnswer);
     try{const lastUser=history[history.length-1]?.content||'';await saveAutoMemory(lastUser,finalAnswer);await updateProfileMemory(lastUser);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
     persistCurrentChat();
   } catch (err) {
-    const failure='AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။';messages.push({ role: 'assistant', content: failure });try{const lastUser=history[history.length-1]?.content||'';await saveAutoMemory(lastUser,failure);await updateProfileMemory(lastUser);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
+    const failure='AI/ဖုန်းလုပ်ဆောင်ချက် မအောင်မြင်ပါ။ ' + (err instanceof Error ? err.message : 'Unknown error') + '\nSettings ထဲက Provider, API Key, Model နဲ့ အင်တာနက်ကို စစ်ပါ။';messages.push({ role: 'assistant', content: failure }); void speakReply(failure);try{const lastUser=history[history.length-1]?.content||'';await saveAutoMemory(lastUser,failure);await updateProfileMemory(lastUser);}catch(e){console.warn('AMARA auto-memory save skipped',e);}
   }
   busy = false; persistCurrentChat(); render();
 }
