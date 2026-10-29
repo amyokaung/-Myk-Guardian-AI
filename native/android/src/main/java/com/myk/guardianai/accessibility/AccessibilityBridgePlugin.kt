@@ -52,7 +52,8 @@ class AccessibilityBridgePlugin : Plugin() {
             return
         }
         try {
-            val engine = TextToSpeech(context) { status ->
+            lateinit var engine: TextToSpeech
+            engine = TextToSpeech(context) { status ->
                 if (status != TextToSpeech.SUCCESS) {
                     call.reject("Android Text-to-Speech engine မစတင်နိုင်ပါ။")
                     return@TextToSpeech
