@@ -404,12 +404,7 @@ async function consumePendingWakeCommand() {
     const pending = await MykNative.getPendingWakeCommand();
     if (!pending.command) return;
     if (pending.command === '__VEDARI_WAKE_ONLY__' || pending.command === '__AMARA_WAKE_ONLY__') {
-      if (activeTab !== 'chat') { activeTab = 'chat'; render(); }
-      const greeting = 'ဟုတ်ကဲ့၊ အမရာဒီမှာရှိပါတယ်။ 😊 မင်းခိုင်းချင်တာကို ဆက်ပြောလိုက်နော်။';
-      messages.push({ role: 'assistant', content: greeting });
-      void speakReply(greeting);
-      persistCurrentChat();
-      if (activeTab === 'chat') render();
+      // Native TTS and the floating overlay acknowledge wake words; never navigate to Chat.
       return;
     }
     // Make sure a wake command goes through the same form pipeline as a typed command,
