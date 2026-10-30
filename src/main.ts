@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { speakText(options: { text: string }): Promise<{success:boolean;language?:string}>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { speakText(options: { text: string }): Promise<{success:boolean;language?:string}>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; systemBack(): Promise<{success:boolean;message?:string}>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -63,7 +63,9 @@ window.addEventListener('amara-native-back', () => {
   if (activeTab !== 'chat') {
     activeTab = 'chat';
     render();
+    return;
   }
+  void MykNative.systemBack().catch(error => console.warn('AMARA system Back failed', error));
 });
 let busy = false;
 type SavedChat = { id: string; title: string; updatedAt: number; messages: Message[] };
