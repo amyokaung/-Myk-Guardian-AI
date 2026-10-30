@@ -285,11 +285,23 @@ class VedariWakeService : Service() {
 
     private fun requestedAppName(command: String): String? {
         val normalized = command.lowercase(Locale.ROOT)
-        val explicitlyOpening = listOf("ဖွင့်", "ဖွင္", "ဖွင့်", "ဖွင့်ပေး", "ဖွင္႔", "open ", "launch ", "start ")
-            .any { normalized.contains(it) }
-        if (!explicitlyOpening) return null
-        return when {
-            normalized.contains("youtube") || normalized.contains("ယူကျု") || normalized.contains("ယူကျူး") -> "YouTube"
+            .replace(Regex("[\\u200B\\uFEFF၊,။.!?]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+        // Require an explicit launch verb. This prevents ordinary conversation
+        // mentioning an app from unexpectedly switching the foreground screen.
+        val openingVerbs = listOf(
+            "ဖွင့်", "ဖွင္", "ဖွင့်", "ဖွင့်ပေး", "ဖွင့်လိုက်", "ဖွင့်ပါ",
+            "ဖွင့်ပေးပါ", "ဖွင့်ပေးနော်", "ဖွင့်ပေး", "ဖွင့်ပေးပါ",
+            "open", "launch", "start"
+        )
+        if (openingVerbs.none { normalized.contains(it) }) return null
+
+        // First preserve common spoken aliases, then resolve any other installed
+        // launcher app from Android's actual app list (not a hard-coded allowlist).
+        val known = when {
+            normalized.contains("youtube") || normalized.contains("ယူကျု") || normalized.contains("ယူကျူး") || normalized.contains("ယူကျူ") -> "YouTube"
             normalized.contains("facebook") || normalized.contains("ဖေ့စ်ဘွတ်") -> "Facebook"
             normalized.contains("messenger") || normalized.contains("မက်ဆင်ဂျာ") -> "Messenger"
             normalized.contains("chrome") || normalized.contains("ဘရောက်ဇာ") -> "Chrome"
@@ -298,6 +310,36 @@ class VedariWakeService : Service() {
             normalized.contains("camera") || normalized.contains("ကင်မရာ") -> "Camera"
             normalized.contains("phone") || normalized.contains("ဖုန်းခေါ်") -> "Phone"
             else -> null
+        }
+        if (known != null) return known
+
+        val target = normalized
+            .replace(Regex("^(?:အမရာ(?:ရေ|လေး)?|amara)[၊,\\s]*"), "")
+            .replace(Regex("^(?:ကျေးဇူးပြု၍|ကျေးဇူးပြုပြီး|please|ငါ့ကို|ကျွန်တော့်ကို|ကျွန်မကို)[\\s]*"), "")
+            .replace(Regex("(?:ဖွင့်ပေးပါ|ဖွင့်ပေးနော်|ဖွင့်ပေး|ဖွင့်လိုက်ပါ|ဖွင့်လိုက်|ဖွင့်ပါ|ဖွင့်|ဖွင့်ပေးပါ|ဖွင့်ပေး|ဖွင့်|open|launch|start)[\\s။.!?]*$"), "")
+            .replace(Regex("^(?:app|အက်ပ်)\\s+"), "")
+            .trim()
+        if (target.isBlank()) return null
+
+        return try {
+            val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val matches = packageManager.queryIntentActivities(launcherIntent, 0)
+            val apps = matches.mapNotNull { resolve ->
+                val label = packageManager.getApplicationLabel(resolve.activityInfo.applicationInfo).toString().trim()
+                if (label.isBlank() || resolve.activityInfo.packageName == packageName) null else label
+            }.distinct()
+
+            fun compact(value: String) = value.lowercase(Locale.ROOT)
+                .replace(Regex("[\\s\\p{Punct}_-]+"), "")
+            val targetKey = compact(target)
+            apps.firstOrNull { compact(it) == targetKey }
+                ?: apps.firstOrNull {
+                    val labelKey = compact(it)
+                    labelKey.length >= 2 && (targetKey.contains(labelKey) || labelKey.contains(targetKey))
+                }
+        } catch (error: Exception) {
+            recordDiagnostic("App စာရင်းဖတ်မရပါ", error.message ?: "PackageManager error")
+            null
         }
     }
 
