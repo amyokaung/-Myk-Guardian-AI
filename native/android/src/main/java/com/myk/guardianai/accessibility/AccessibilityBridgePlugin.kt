@@ -269,7 +269,25 @@ class AccessibilityBridgePlugin : Plugin() {
         Thread {
             try {
                 val pm = context.packageManager
-                val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val knownPackage = when (requested.lowercase(Locale.ROOT)) {
+                "youtube", "ယူကျု", "ယူကျူး", "ယူကျူ" -> "com.google.android.youtube"
+                "facebook" -> "com.facebook.katana"
+                "messenger" -> "com.facebook.orca"
+                "chrome" -> "com.android.chrome"
+                "maps", "google maps", "map" -> "com.google.android.apps.maps"
+                else -> null
+            }
+            val knownIntent = knownPackage?.let { pm.getLaunchIntentForPackage(it) }
+            if (knownIntent != null) {
+                knownIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(knownIntent)
+                val result = JSObject()
+                result.put("success", true)
+                result.put("message", "${requested} ကို ဖွင့်လိုက်ပါပြီ။")
+                call.resolve(result)
+                return
+            }
+            val apps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
                 } else {
                     @Suppress("DEPRECATION")
@@ -631,6 +649,34 @@ class AccessibilityBridgePlugin : Plugin() {
             }
         }
         return true
+    }
+
+    @PluginMethod
+    fun systemBack(call: PluginCall) {
+        val service = MyAccessibilityService.instance()
+        if (service == null) {
+            call.reject("Accessibility Service ကို ဖွင့်ထားရန် လိုအပ်ပါတယ်။")
+            return
+        }
+        Handler(Looper.getMainLooper()).post {
+            try {
+                activity?.moveTaskToBack(true)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try {
+                        if (service.back()) {
+                            val result = JSObject()
+                            result.put("success", true)
+                            result.put("message", "Android Back ကို လုပ်ဆောင်ပြီးပါပြီ။")
+                            call.resolve(result)
+                        } else call.reject("Android က Back ကို လက်မခံပါ။")
+                    } catch (error: Exception) {
+                        call.reject("Android Back မအောင်မြင်ပါ: ${error.message}", error)
+                    }
+                }, 350L)
+            } catch (error: Exception) {
+                call.reject("Back action မအောင်မြင်ပါ: ${error.message}", error)
+            }
+        }
     }
 
     @PluginMethod
