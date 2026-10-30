@@ -304,6 +304,21 @@ class VedariWakeService : Service() {
     private fun launchRequestedApp(appName: String) {
         try {
             val pm = packageManager
+            val knownPackage = when (appName) {
+                "YouTube" -> "com.google.android.youtube"
+                "Facebook" -> "com.facebook.katana"
+                "Messenger" -> "com.facebook.orca"
+                "Chrome" -> "com.android.chrome"
+                "Maps" -> "com.google.android.apps.maps"
+                else -> null
+            }
+            val knownIntent = knownPackage?.let { pm.getLaunchIntentForPackage(it) }
+            if (knownIntent != null) {
+                knownIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(knownIntent)
+                recordDiagnostic("App ဖွင့်လိုက်ပါပြီ", appName)
+                return
+            }
             val intent = when (appName) {
                 "Settings" -> Intent(android.provider.Settings.ACTION_SETTINGS)
                 "Camera" -> Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
