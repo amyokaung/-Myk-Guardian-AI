@@ -39,7 +39,7 @@ class MyAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         try {
             val packageName = root.packageName?.toString().orEmpty()
-            if (packageName == applicationContext.packageName) { latestScreenContext = ""; latestScreenPackage = ""; return }
+            if (packageName == applicationContext.packageName) return
             val lines = mutableListOf<String>()
             collectSafeText(root, lines, 0)
             latestScreenContext = if (lines.isEmpty()) "" else
@@ -87,6 +87,7 @@ class MyAccessibilityService : AccessibilityService() {
     fun readScreenContext(): String {
         if (!isScreenLearningEnabled()) return ""
         captureVisibleScreen()
+        if (System.currentTimeMillis() - latestScreenCapturedAt > 60000L) return ""
         return latestScreenContext
     }
 
