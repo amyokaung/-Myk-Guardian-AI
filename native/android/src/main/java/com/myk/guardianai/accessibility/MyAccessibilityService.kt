@@ -19,7 +19,67 @@ class MyAccessibilityService : AccessibilityService() {
         activeService = WeakReference(this)
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event == null || !isScreenLearningEnabled()) return
+        val now = System.currentTimeMillis()
+        if (now - lastCaptureAt < 650L) return
+        lastCaptureAt = now
+        captureVisibleScreen()
+    }
+
+    private fun isScreenLearningEnabled(): Boolean =
+        getSharedPreferences("amara_screen_learning", MODE_PRIVATE).getBoolean("enabled", false)
+
+    private fun captureVisibleScreen() {
+        val root = rootInActiveWindow ?: return
+        try {
+            val packageName = root.packageName?.toString().orEmpty()
+            if (packageName == applicationContext.packageName) return
+            val lines = mutableListOf<String>()
+            collectSafeText(root, lines, 0)
+            latestScreenContext = if (lines.isEmpty()) "" else
+                "App: $packageName\\n" + lines.distinct().take(45).joinToString("\\n").take(4500)
+            latestScreenCapturedAt = System.currentTimeMillis()
+        } finally {
+            root.recycleSafely()
+        }
+    }
+
+    private fun collectSafeText(node: AccessibilityNodeInfo, out: MutableList<String>, depth: Int) {
+        if (depth > 18 || out.size >= 60) return
+        // Never collect password fields or text from explicitly sensitive input controls.
+        val className = node.className?.toString().orEmpty()
+        val viewId = node.viewIdResourceName.orEmpty()
+        val sensitive = node.isPassword || className.contains("password", true) ||
+            viewId.contains("password", true) || viewId.contains("otp", true) ||
+            viewId.contains("pin", true) || viewId.contains("cvv", true)
+        if (!sensitive && node.isVisibleToUser) {
+            val candidates = listOfNotNull(node.text?.toString(), node.contentDescription?.toString())
+            candidates.forEach { raw ->
+                val value = raw.replace(Regex("\\s+"), " ").trim()
+                if (value.length in 2..240 && !looksSensitive(value) && !out.contains(value)) out.add(value)
+            }
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            try { collectSafeText(child, out, depth + 1) } finally { child.recycleSafely() }
+        }
+    }
+
+    private fun looksSensitive(value: String): Boolean {
+        val lower = value.lowercase()
+        return Regex("\\b\\d{4,8}\\b").containsMatchIn(value) ||
+            lower.contains("password") || lower.contains("passcode") ||
+            lower.contains("one-time code") || lower.contains("verification code") ||
+            lower.contains("otp") || lower.contains("cvv") ||
+            lower.contains("credit card") || lower.contains("bank account")
+    }
+
+    fun readScreenContext(): String {
+        if (!isScreenLearningEnabled()) return ""
+        captureVisibleScreen()
+        return latestScreenContext
+    }
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
@@ -155,6 +215,9 @@ class MyAccessibilityService : AccessibilityService() {
 
     companion object {
         @Volatile private var activeService: WeakReference<MyAccessibilityService>? = null
+        @Volatile private var latestScreenContext: String = ""
+        @Volatile private var latestScreenCapturedAt: Long = 0L
+        @Volatile private var lastCaptureAt: Long = 0L
         fun instance(): MyAccessibilityService? = activeService?.get()
     }
 }
