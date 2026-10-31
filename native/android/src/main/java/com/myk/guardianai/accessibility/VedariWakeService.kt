@@ -159,22 +159,32 @@ class VedariWakeService : Service() {
                             .apply()
                         // The ONNX model detects the wake phrase. SpeechRecognizer is now
                         // command-only, so it cannot accidentally replace ONNX detection.
+                        // Try all ASR alternatives. The first Burmese transcript can be
+                        // phonetically wrong even when a later candidate contains the app name.
                         val command = candidates.firstOrNull().orEmpty()
                         awaitingCommand = false
                         if (command.isNotBlank()) {
                             savePendingCommand(command)
-                            recordDiagnostic("အမိန့်ရရှိပြီး", command)
+                            recordDiagnostic("အမိန့်ရရှိပြီး", candidates.joinToString(" / ").take(240))
                             showFloatingOverlay("အမိန့်ရရှိပြီး", command)
-                            // Do not force-switch to AMARA Chat from another app.
-                            // Explicit app-launch requests are executed directly; other
-                            // commands remain pending for the foreground assistant/overlay.
-                            val targetApp = requestedAppName(command)
-                            if (targetApp != null) {
-                                launchRequestedApp(targetApp)
-                            } else if (MyAccessibilityService.instance()?.activeWindowPackageName() == packageName) {
-                                openAppWithCommand(command)
+                            // Device-level commands must execute in the currently visible app;
+                            // they must not be routed back into AMARA's chat screen.
+                            if (candidates.any { isBackCommand(it) }) {
+                                val service = MyAccessibilityService.instance()
+                                if (service?.back() == true) {
+                                    recordDiagnostic("Back Action အောင်မြင်သည်", candidates.joinToString(" / ").take(180))
+                                } else {
+                                    recordDiagnostic("Back Action မအောင်မြင်ပါ", "Accessibility Service ချိတ်ဆက်မှုကို စစ်ဆေးပါ။")
+                                }
                             } else {
-                                recordDiagnostic("အမိန့်ကို ကြားပြီးပါပြီ", "လက်ရှိ app မပြောင်းဘဲ command ကို သိမ်းထားသည်: $command")
+                                val targetApp = candidates.firstNotNullOfOrNull { requestedAppName(it) }
+                                if (targetApp != null) {
+                                    launchRequestedApp(targetApp)
+                                } else if (MyAccessibilityService.instance()?.activeWindowPackageName() == packageName) {
+                                    openAppWithCommand(command)
+                                } else {
+                                    recordDiagnostic("အမိန့်ကို ကြားပြီးပါပြီ", "လက်ရှိ app မပြောင်းဘဲ command ကို သိမ်းထားသည်: $command")
+                                }
                             }
                         } else {
                             recordDiagnostic("အမိန့်မကြားရ", "နောက်တစ်ကြိမ် ပြောပါ")
@@ -283,6 +293,19 @@ class VedariWakeService : Service() {
         }, RESTART_DELAY_MS)
     }
 
+    private fun isBackCommand(command: String): Boolean {
+        val normalized = command.lowercase(Locale.ROOT)
+            .replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), "")
+        val phrases = listOf(
+            "back", "go back", "နောက်ပြန်", "နောက်ကိုပြန်", "ပြန်သွား",
+            "အရင်စာမျက်နှာ", "အရင်နေရာ", "နောက်တစ်ဆင့်ပြန်", "ပြန်ထွက်",
+            "နောက်သို့ပြန်", "ပြန်သွားပေး"
+        )
+        return phrases.any { phrase ->
+            normalized.contains(phrase.lowercase(Locale.ROOT).replace(Regex("[\\s\\u200B\\uFEFF၊,။.!?]+"), ""))
+        }
+    }
+
     private fun requestedAppName(command: String): String? {
         val normalized = command.lowercase(Locale.ROOT)
             .replace(Regex("[\\u200B\\uFEFF၊,။.!?]+"), " ")
@@ -302,6 +325,7 @@ class VedariWakeService : Service() {
         // launcher app from Android's actual app list (not a hard-coded allowlist).
         val known = when {
             normalized.contains("youtube") || normalized.contains("ယူကျု") || normalized.contains("ယူကျူး") || normalized.contains("ယူကျူ") -> "YouTube"
+            normalized.contains("tiktok") || normalized.contains("tik tok") || normalized.contains("သစ်တော့") || normalized.contains("တစ်တော့") || normalized.contains("တစ်တောက်") -> "TikTok"
             normalized.contains("facebook") || normalized.contains("ဖေ့စ်ဘွတ်") -> "Facebook"
             normalized.contains("messenger") || normalized.contains("မက်ဆင်ဂျာ") -> "Messenger"
             normalized.contains("chrome") || normalized.contains("ဘရောက်ဇာ") -> "Chrome"
@@ -352,6 +376,7 @@ class VedariWakeService : Service() {
                 "Messenger" -> "com.facebook.orca"
                 "Chrome" -> "com.android.chrome"
                 "Maps" -> "com.google.android.apps.maps"
+                "TikTok" -> "com.zhiliaoapp.musically"
                 else -> null
             }
             val knownIntent = knownPackage?.let { pm.getLaunchIntentForPackage(it) }
