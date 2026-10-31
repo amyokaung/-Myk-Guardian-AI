@@ -34,7 +34,7 @@ class MyAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         try {
             val packageName = root.packageName?.toString().orEmpty()
-            if (packageName == applicationContext.packageName) return
+            if (packageName == applicationContext.packageName) { latestScreenContext = ""; return }
             val lines = mutableListOf<String>()
             collectSafeText(root, lines, 0)
             latestScreenContext = if (lines.isEmpty()) "" else
@@ -53,7 +53,8 @@ class MyAccessibilityService : AccessibilityService() {
         val sensitive = node.isPassword || className.contains("password", true) ||
             viewId.contains("password", true) || viewId.contains("otp", true) ||
             viewId.contains("pin", true) || viewId.contains("cvv", true)
-        if (!sensitive && node.isVisibleToUser) {
+        if (sensitive) return
+        if (node.isVisibleToUser) {
             val candidates = listOfNotNull(node.text?.toString(), node.contentDescription?.toString())
             candidates.forEach { raw ->
                 val value = raw.replace(Regex("\\s+"), " ").trim()
