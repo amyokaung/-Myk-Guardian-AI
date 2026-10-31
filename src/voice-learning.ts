@@ -5,7 +5,8 @@ type PhraseMap = Record<string, string>;
 
 export function normalizePhrase(value: string): string {
   return value.normalize('NFC').toLocaleLowerCase('my-MM')
-    .replace(/[၊,။.!?！？]/g, ' ')
+    .replace(/[\u200B\uFEFF]/g, '')
+    .replace(/[၊,။.!?！？]+/g, ' ')
     .replace(/\s+/g, ' ').trim();
 }
 export function getPhraseMap(): PhraseMap {
@@ -27,16 +28,30 @@ export function removePhraseCorrection(heard: string): void {
 export function applyLearnedPhrase(heard: string): string {
   return getPhraseMap()[normalizePhrase(heard)] || heard;
 }
-/** Normalize common colloquial Burmese speech for local command matching. */
+/** Normalize common colloquial Burmese speech and ASR spelling variants before intent matching. */
 export function normalizeBurmeseCommand(value: string): string {
   let text = value.normalize('NFC').toLocaleLowerCase('my-MM').trim();
+  text = text.replace(/[\u200B\uFEFF]/g, '');
   text = text.replace(/[၀-၉]/g, d => String('၀၁၂၃၄၅၆၇၈၉'.indexOf(d)));
   text = text.replace(/[၊,။.!?！？]+/g, ' ').replace(/\s+/g, ' ').trim();
-  text = text.replace(/ဖွင့်|ဖွင့္|ဖွင့္/g, 'ဖွင့်')
-    .replace(/ကျော်လိုက်ပါ|ကျော်ပေးပါနော်|ကျော်ပေးနော်/g, 'ကျော်ပေးပါ');
+
+  // Normalize spelling variants that are commonly confused in Burmese ASR.
+  text = text.replace(/ဖွင့်|ဖွင့်|ဖွင့္|ဖွင့္|ဖွင့််/g, 'ဖွင့်')
+    .replace(/ဖွင့်ပေး(?:ပါ|နော်)?/g, 'ဖွင့်')
+    .replace(/ကျော်(?:လိုက်|ပေး)(?:ပါ|နော်)?/g, 'ကျော်')
+    .replace(/နောက်တစ်ပုဒ်(?:သွား|ဖွင့်|ကျော်)?/g, 'နောက်သီချင်း')
+    .replace(/သီချင်း(?:လေး|တစ်ပုဒ်)?(?:ကို)?/g, 'သီချင်း')
+    .replace(/အသံ(?:ကို)?(?:နည်းနည်း)?(?:လျှော့|လျော့|ချ)(?:ပေး)?/g, 'အသံလျှော့')
+    .replace(/အသံ(?:ကို)?(?:နည်းနည်း)?(?:တိုး|တင်|မြှင့်)(?:ပေး)?/g, 'အသံတိုး')
+    .replace(/နောက်ပြန်(?:သွား|ပေး)?/g, 'back');
+
   text = text.replace(/ယူကျု့?|ယူကျူး|ယူကျူ|ယူကျူဘ်|ယူကျူ့|ယူတူးဘ်|ယူတျုဘ်/g, 'youtube')
     .replace(/ဖေ့စ်ဘွတ်ခ်?|ဖေ့ဘွတ်/g, 'facebook')
     .replace(/ဂူဂဲလ်မြေပုံ|ဂူဂယ်မြေပုံ|google map(?!s)/g, 'google maps')
-    .replace(/ဂူဂဲလ်/g, 'google');
-  return text;
+    .replace(/ဂူဂဲလ်/g, 'google')
+    .replace(/တစ်တော့|သစ်တော့|တစ်တောက်/g, 'tiktok')
+    .replace(/မက်ဆင်ဂျာ/g, 'messenger')
+    .replace(/ခရုမ်း/g, 'chrome');
+
+  return text.replace(/\s+/g, ' ').trim();
 }
