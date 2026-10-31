@@ -178,6 +178,53 @@ class AccessibilityBridgePlugin : Plugin() {
     }
 
     @PluginMethod
+    fun setScreenLearningMode(call: PluginCall) {
+        val enabled = call.getBoolean("enabled") ?: false
+        context.getSharedPreferences("amara_screen_learning", android.content.Context.MODE_PRIVATE)
+            .edit().putBoolean("enabled", enabled).apply()
+        val result = JSObject()
+        result.put("enabled", enabled)
+        result.put("message", if (enabled) "Screen Learning Mode ဖွင့်ထားသည်။" else "Screen Learning Mode ပိတ်ထားသည်။")
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun getScreenLearningStatus(call: PluginCall) {
+        val enabled = context.getSharedPreferences("amara_screen_learning", android.content.Context.MODE_PRIVATE)
+            .getBoolean("enabled", false)
+        val result = JSObject()
+        result.put("enabled", enabled)
+        result.put("serviceConnected", MyAccessibilityService.instance() != null)
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun getScreenContext(call: PluginCall) {
+        val enabled = context.getSharedPreferences("amara_screen_learning", android.content.Context.MODE_PRIVATE)
+            .getBoolean("enabled", false)
+        if (!enabled) {
+            val result = JSObject()
+            result.put("enabled", false)
+            result.put("text", "")
+            call.resolve(result)
+            return
+        }
+        val service = MyAccessibilityService.instance()
+        if (service == null) {
+            call.reject("Screen Learning အတွက် AMARA Accessibility Service ကို Android Settings မှာ ဖွင့်ပါ။")
+            return
+        }
+        try {
+            val result = JSObject()
+            result.put("enabled", true)
+            result.put("text", service.readScreenContext())
+            call.resolve(result)
+        } catch (error: Exception) {
+            call.reject("လက်ရှိမျက်နှာပြင်ကို ဖတ်မရပါ: ${error.message}", error)
+        }
+    }
+
+    @PluginMethod
     fun getStatus(call: PluginCall) {
         val result = JSObject()
         val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
@@ -190,6 +237,7 @@ class AccessibilityBridgePlugin : Plugin() {
         val connected = MyAccessibilityService.instance() != null
         result.put("accessibilityEnabled", enabledInSettings)
         result.put("serviceConnected", connected)
+        result.put("screenLearningEnabled", context.getSharedPreferences("amara_screen_learning", android.content.Context.MODE_PRIVATE).getBoolean("enabled", false))
         val enabledListeners = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners").orEmpty()
         val expectedListener = ComponentName(context, MyNotificationListenerService::class.java)
         val notificationAccessEnabled = enabledListeners.split(':').any { entry ->
