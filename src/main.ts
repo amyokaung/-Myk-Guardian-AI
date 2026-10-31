@@ -5,6 +5,7 @@ import { Geolocation } from '@capacitor/geolocation';
 import { VoiceRecorder } from 'capacitor-voice-recorder';
 import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
+import { applyLearnedPhrase } from './voice-learning';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 type MykNativePlugin = { setScreenLearningMode(options:{enabled:boolean}):Promise<{enabled:boolean;message?:string}>; getScreenLearningStatus():Promise<{enabled:boolean;serviceConnected:boolean}>; getScreenContext():Promise<{enabled:boolean;text:string}>; speakText(options: { text: string }): Promise<{success:boolean;language?:string}>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; systemBack(): Promise<{success:boolean;message?:string}>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
@@ -483,8 +484,9 @@ function renderChat(view: HTMLElement) {
       if(!available.available)throw new Error('ဒီဖုန်းမှာ Speech Recognition မရပါ။ Google Speech Services ကို စစ်ပါ။');
       const permission=await SpeechRecognition.requestPermissions();
       if(permission.speechRecognition!=='granted')throw new Error('Microphone permission ကို Allow လုပ်ပါ။');
-      const result=await SpeechRecognition.start({language:'my-MM',maxResults:1,prompt:'မြန်မာလို ပြောပါ',partialResults:false,popup:true});
-      const transcript=result.matches?.[0]?.trim();
+      const result=await SpeechRecognition.start({language:'my-MM',maxResults:5,prompt:'မြန်မာစကားကို စာသားအတိုင်း တိတိကျကျ မှတ်သားပါ။ အင်္ဂလိပ်စကားရောပါလျှင်လည်း မူရင်းအတိုင်းထားပါ။',partialResults:false,popup:true});
+      const candidates=(result.matches||[]).map(value=>value?.trim()).filter((value):value is string=>!!value);
+      const transcript=candidates.map(value=>applyLearnedPhrase(value)).find(value=>!!value) || candidates[0];
       if(transcript){prompt.value=transcript;resize();view.querySelector<HTMLFormElement>('#chatForm')!.requestSubmit();}
       else alert('အသံကို စာသားအဖြစ် မရရှိပါ။ ဖုန်းတွင် မြန်မာ Speech Recognition ပံ့ပိုးမှုကို စစ်ပါ။');
     } catch(err){alert('အသံဖြင့် ခိုင်းမရပါ။ '+(err instanceof Error?err.message:'Speech recognition error'));}
