@@ -319,7 +319,11 @@ class VedariWakeService : Service() {
             "ဖွင့်ပေးပါ", "ဖွင့်ပေးနော်", "ဖွင့်ပေး", "ဖွင့်ပေးပါ",
             "open", "launch", "start"
         )
-        if (openingVerbs.none { normalized.contains(it) }) return null
+        val tiktokOnlyUtterance = listOf("tiktok", "tik tok", "သစ်တော့", "တစ်တော့", "တစ်တောက်")
+            .any { normalized.replace(Regex("\\s+"), "") == it.replace(Regex("\\s+"), "") }
+        // A wake-word command may be just the app name ("TikTok") without repeating
+        // "ဖွင့်". Keep this exception narrow so casual app mentions do not launch apps.
+        if (openingVerbs.none { normalized.contains(it) } && !tiktokOnlyUtterance) return null
 
         // First preserve common spoken aliases, then resolve any other installed
         // launcher app from Android's actual app list (not a hard-coded allowlist).
