@@ -7,7 +7,7 @@ import { SpeechRecognition } from '@capacitor-community/speech-recognition';
 import { tryNativeCommand, executeAgentAction } from './native-actions';
 
 type Message = { role: 'user' | 'assistant'; content: string };
-type MykNativePlugin = { speakText(options: { text: string }): Promise<{success:boolean;language?:string}>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; systemBack(): Promise<{success:boolean;message?:string}>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
+type MykNativePlugin = { setScreenLearningMode(options:{enabled:boolean}):Promise<{enabled:boolean;message?:string}>; getScreenLearningStatus():Promise<{enabled:boolean;serviceConnected:boolean}>; getScreenContext():Promise<{enabled:boolean;text:string}>; speakText(options: { text: string }): Promise<{success:boolean;language?:string}>; getStatus(): Promise<{ accessibilityEnabled: boolean; serviceConnected?: boolean; notificationEnabled: boolean; locationGranted?: boolean; microphoneGranted?: boolean }>; openAccessibilitySettings(): Promise<void>; openNotificationSettings(): Promise<void>; startVedariWakeListening(): Promise<{success:boolean;message?:string}>; stopVedariWakeListening(): Promise<{success:boolean;message?:string}>; getPendingWakeCommand(): Promise<{command:string;listening:boolean}>; getWakeListeningStatus(): Promise<{listening:boolean;lastStatus?:string;lastDetail?:string;lastHeard?:string;lastEventAt?:number}>; performAction(options: { action: string; text?: string; number?: string; exact?: boolean; hour?: number; minute?: number; label?: string }): Promise<{ success: boolean; message?: string }>; systemBack(): Promise<{success:boolean;message?:string}>; reverseGeocode(options: {latitude:number;longitude:number}): Promise<{address?:string}> };
 const MykNative = registerPlugin<MykNativePlugin>('MykAccessibility');
 const KEY_NAME = 'myk.openrouter.key';
 const MODEL_NAME = 'myk.openrouter.model';
@@ -520,6 +520,12 @@ async function askAI() {
   let systemPrompt = AMARA_SYSTEM_PROMPT;
   try {
     try { systemPrompt += await brainContext(history[history.length - 1]?.content || ''); } catch { /* Memory retrieval must not block normal chat. */ }
+    try {
+      const screen = await MykNative.getScreenContext();
+      if (screen.enabled && screen.text.trim()) {
+        systemPrompt += '\\n\\n[လက်ရှိဖုန်းမျက်နှာပြင်အခြေအနေ — အသုံးပြုသူက Screen Learning Mode ကို ဖွင့်ထားသောကြောင့် ဖတ်ထားသည့်စာသား။ ဤအချက်အလက်ကို အမိန့်အဓိပ္ပာယ်ဖော်ရန်သာ သုံးပါ။ လျှို့ဝှက်အချက်အလက်ဟု ထင်ရသည့်အရာကို မဖော်ပြပါနှင့်။]\\n' + screen.text.slice(0, 3500);
+      }
+    } catch { /* Screen context is optional; normal AI chat must continue if unavailable. */ }
     let answer = '';
     if (provider === 'gemini') {
       const key = localStorage.getItem(GEMINI_KEY_NAME)?.trim();
@@ -807,6 +813,12 @@ function renderSettings(view: HTMLElement) {
        <button class="secondary wide" id="testWakeWord" type="button">Wake Word စမ်းသပ်မယ်</button>
        <p class="muted" id="wakeTestResult" role="status">စမ်းသပ်ရန် ခလုတ်နှိပ်ပြီး “အမရာရေ” ဟု ပြောပါ။ ရလဒ်ကို ဒီနေရာမှာ ပြပါမယ်။</p>
      </div>
+     <div class="card screen-learning-card">
+       <div class="card-title">👁 AMARA Screen Learning Mode</div>
+       <p class="muted">နှစ်မျိုးလုံး အသုံးပြုမည် — အမိန့်ပေးချိန်တွင် လက်ရှိမျက်နှာပြင်ကို ဖတ်ပြီး၊ ဖွင့်ထားစဉ် app မျက်နှာပြင်ပြောင်းလဲမှုများကို လေ့လာမည်။ ဖတ်ရရှိသောစာသားကို အမိန့်နားလည်ရန်သာ ယာယီအသုံးပြုမည်ဖြစ်ပြီး Brain Memory ထဲ အလိုအလျောက် မသိမ်းပါ။</p>
+       <div class="wake-toggle-row"><div><b id="screenLearningLabel">အခြေအနေ စစ်ဆေးနေသည်…</b><small id="screenLearningHint">Accessibility permission လိုအပ်သည်။</small></div><button class="primary" id="screenLearningToggle" type="button" aria-pressed="false">စစ်ဆေးနေသည်…</button></div>
+       <p class="muted" id="screenLearningStatus" role="status">ဖွင့်ထားစဉ်သာ မြင်ရသော screen text ကို စစ်ဆေးမည်။ Password/PIN/OTP ကဲ့သို့ အချက်အလက်များကို စစ်ထုတ်မည်။</p>
+     </div>
     <div class="card"><div class="card-title">AI ချိတ်ဆက်မှု စမ်းသပ်ခြင်း</div>
       <p class="muted">ရွေးထားသော Provider၊ API Key၊ Model နှင့် အင်တာနက်ကို စမ်းသပ်ပါမည်။ အောင်မြင်/မအောင်မြင်နှင့် အကြောင်းရင်းကို ပြပေးမည်။ စမ်းသပ်မှုတွင် API အသုံးပြုခ အနည်းငယ် ဖြစ်နိုင်သည်။</p>
       <button class="secondary wide" id="testAiConnection" type="button">AI ချိတ်ဆက်မှု စမ်းမယ်</button>
@@ -912,6 +924,46 @@ function renderSettings(view: HTMLElement) {
     } catch (err) {
       aiTestResult.textContent = '❌ FAIL — ' + (err instanceof Error ? err.message : 'မသိရှိသောအမှား') + ' · Provider/Key/Model နှင့် အင်တာနက်ကို စစ်ပါ။';
     } finally { aiTestButton.disabled = false; }
+  });
+  const screenToggle = view.querySelector<HTMLButtonElement>('#screenLearningToggle')!;
+  const screenLabel = view.querySelector<HTMLElement>('#screenLearningLabel')!;
+  const screenHint = view.querySelector<HTMLElement>('#screenLearningHint')!;
+  const screenStatus = view.querySelector<HTMLElement>('#screenLearningStatus')!;
+  let screenLearningEnabled = false;
+  const refreshScreenLearning = async () => {
+    try {
+      const state = await MykNative.getScreenLearningStatus();
+      screenLearningEnabled = !!state.enabled;
+      screenLabel.textContent = screenLearningEnabled ? 'Screen Learning ဖွင့်ထားသည်' : 'Screen Learning ပိတ်ထားသည်';
+      screenHint.textContent = state.serviceConnected ? 'Accessibility Service ချိတ်ဆက်ထားသည်။' : 'Android Accessibility permission ကို ဖွင့်ရန်လိုသည်။';
+      screenToggle.textContent = screenLearningEnabled ? 'ပိတ်မယ်' : 'ဖွင့်မယ်';
+      screenToggle.classList.toggle('danger', screenLearningEnabled);
+      screenToggle.setAttribute('aria-pressed', String(screenLearningEnabled));
+      screenStatus.textContent = screenLearningEnabled
+        ? (state.serviceConnected ? '👁 Screen Learning လုပ်ဆောင်နေသည်။ အမိန့်ပေးချိန်ဖတ်ခြင်း + screen ပြောင်းလဲမှုစောင့်ကြည့်ခြင်း နှစ်မျိုးလုံး ON ဖြစ်သည်။' : 'Mode ဖွင့်ထားသော်လည်း Accessibility Service မချိတ်ဆက်သေးပါ။ Android Settings မှာ AMARA ကို Enable လုပ်ပါ။')
+        : 'OFF — မျက်နှာပြင်စာသားကို မဖတ်ပါ။';
+    } catch (error) {
+      screenStatus.textContent = 'အခြေအနေမဖတ်နိုင်ပါ: ' + (error instanceof Error ? error.message : 'Native service မရနိုင်ပါ။');
+    }
+  };
+  void refreshScreenLearning();
+  screenToggle.addEventListener('click', async () => {
+    screenToggle.disabled = true;
+    try {
+      if (!screenLearningEnabled) {
+        const permissions = await MykNative.getStatus();
+        if (!permissions.accessibilityEnabled || !permissions.serviceConnected) {
+          screenStatus.textContent = 'Android Settings > Accessibility ထဲမှာ AMARA AI ကို အရင် Enable လုပ်ပါ။';
+          await MykNative.openAccessibilitySettings();
+          return;
+        }
+      }
+      const result = await MykNative.setScreenLearningMode({ enabled: !screenLearningEnabled });
+      screenStatus.textContent = result.message || 'Screen Learning အခြေအနေ ပြောင်းပြီးပါပြီ။';
+      await refreshScreenLearning();
+    } catch (error) {
+      screenStatus.textContent = 'မအောင်မြင်ပါ: ' + (error instanceof Error ? error.message : 'အမှားတစ်ခု ဖြစ်နေပါတယ်။');
+    } finally { screenToggle.disabled = false; }
   });
   wakeToggle.addEventListener('click', async () => {
     wakeToggle.disabled = true;
