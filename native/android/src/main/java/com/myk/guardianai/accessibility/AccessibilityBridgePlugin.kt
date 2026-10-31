@@ -182,6 +182,7 @@ class AccessibilityBridgePlugin : Plugin() {
         val enabled = call.getBoolean("enabled") ?: false
         context.getSharedPreferences("amara_screen_learning", android.content.Context.MODE_PRIVATE)
             .edit().putBoolean("enabled", enabled).apply()
+        MyAccessibilityService.instance()?.setScreenLearningActive(enabled)
         val result = JSObject()
         result.put("enabled", enabled)
         result.put("message", if (enabled) "Screen Learning Mode ဖွင့်ထားသည်။" else "Screen Learning Mode ပိတ်ထားသည်။")
@@ -195,6 +196,7 @@ class AccessibilityBridgePlugin : Plugin() {
         val result = JSObject()
         result.put("enabled", enabled)
         result.put("serviceConnected", MyAccessibilityService.instance() != null)
+        MyAccessibilityService.screenLearningStats().forEach { (key, value) -> result.put(key, value) }
         call.resolve(result)
     }
 
@@ -218,6 +220,7 @@ class AccessibilityBridgePlugin : Plugin() {
             val result = JSObject()
             result.put("enabled", true)
             result.put("text", service.readScreenContext())
+            MyAccessibilityService.screenLearningStats().forEach { (key, value) -> result.put(key, value) }
             call.resolve(result)
         } catch (error: Exception) {
             call.reject("လက်ရှိမျက်နှာပြင်ကို ဖတ်မရပါ: ${error.message}", error)
