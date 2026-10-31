@@ -5,6 +5,10 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
 import android.os.Bundle
+import androidx.core.app.NotificationCompat
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.lang.ref.WeakReference
@@ -17,6 +21,7 @@ class MyAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         activeService = WeakReference(this)
+        if (isScreenLearningEnabled()) showLearningNotification("စောင့်ကြည့်ရန် အဆင်သင့်ဖြစ်သည်")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -34,12 +39,15 @@ class MyAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         try {
             val packageName = root.packageName?.toString().orEmpty()
-            if (packageName == applicationContext.packageName) { latestScreenContext = ""; return }
+            if (packageName == applicationContext.packageName) { latestScreenContext = ""; latestScreenPackage = ""; return }
             val lines = mutableListOf<String>()
             collectSafeText(root, lines, 0)
             latestScreenContext = if (lines.isEmpty()) "" else
                 "App: $packageName\\n" + lines.distinct().take(45).joinToString("\\n").take(4500)
             latestScreenCapturedAt = System.currentTimeMillis()
+            latestScreenPackage = packageName
+            latestScreenCaptureCount += 1
+            showLearningNotification(if (lines.isEmpty()) "မျက်နှာပြင်ကို ဖတ်နေသည် · စာသားမရသေး" else "ဖတ်ရှုနေသည် · ${lines.size} စာသား")
         } finally {
             root.recycleSafely()
         }
@@ -81,10 +89,42 @@ class MyAccessibilityService : AccessibilityService() {
         captureVisibleScreen()
         return latestScreenContext
     }
+
+    fun setScreenLearningActive(enabled: Boolean) {
+        if (enabled) {
+            latestScreenContext = ""
+            latestScreenPackage = ""
+            latestScreenCapturedAt = 0L
+            latestScreenCaptureCount = 0
+            showLearningNotification("ဖွင့်ထားသည် · အခြား App ကို ဖွင့်ပါ")
+        } else {
+            latestScreenContext = ""
+            latestScreenPackage = ""
+            latestScreenCapturedAt = 0L
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(SCREEN_NOTIFICATION_ID)
+        }
+    }
+
+    private fun showLearningNotification(status: String) {
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(NotificationChannel(SCREEN_CHANNEL_ID, "AMARA Screen Learning", NotificationManager.IMPORTANCE_LOW))
+        }
+        val notification = NotificationCompat.Builder(this, SCREEN_CHANNEL_ID)
+            .setSmallIcon(applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_menu_view)
+            .setContentTitle("AMARA Screen Learning ON")
+            .setContentText(status)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .build()
+        manager.notify(SCREEN_NOTIFICATION_ID, notification)
+    }
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
         if (activeService?.get() === this) activeService = null
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(SCREEN_NOTIFICATION_ID)
         super.onDestroy()
     }
 
@@ -219,6 +259,16 @@ class MyAccessibilityService : AccessibilityService() {
         @Volatile private var latestScreenContext: String = ""
         @Volatile private var latestScreenCapturedAt: Long = 0L
         @Volatile private var lastCaptureAt: Long = 0L
+        @Volatile private var latestScreenPackage: String = ""
+        @Volatile private var latestScreenCaptureCount: Int = 0
+        const val SCREEN_NOTIFICATION_ID = 7304
+        const val SCREEN_CHANNEL_ID = "amara_screen_learning"
         fun instance(): MyAccessibilityService? = activeService?.get()
+        fun screenLearningStats(): Map<String, Any> = mapOf(
+            "capturedAt" to latestScreenCapturedAt,
+            "capturedPackage" to latestScreenPackage,
+            "capturedChars" to latestScreenContext.length,
+            "captureCount" to latestScreenCaptureCount
+        )
     }
 }
