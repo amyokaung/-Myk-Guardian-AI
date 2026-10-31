@@ -43,7 +43,7 @@ class MyAccessibilityService : AccessibilityService() {
             val lines = mutableListOf<String>()
             collectSafeText(root, lines, 0)
             latestScreenContext = if (lines.isEmpty()) "" else
-                "App: $packageName\\n" + lines.distinct().take(45).joinToString("\\n").take(4500)
+                "App: $packageName" + System.lineSeparator() + lines.distinct().take(45).joinToString(System.lineSeparator()).take(4500)
             latestScreenCapturedAt = System.currentTimeMillis()
             latestScreenPackage = packageName
             latestScreenCaptureCount += 1
@@ -106,6 +106,9 @@ class MyAccessibilityService : AccessibilityService() {
     }
 
     private fun showLearningNotification(status: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastNotificationAt < 2500L && latestScreenCaptureCount > 1) return
+        lastNotificationAt = now
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(NotificationChannel(SCREEN_CHANNEL_ID, "AMARA Screen Learning", NotificationManager.IMPORTANCE_LOW))
@@ -261,6 +264,7 @@ class MyAccessibilityService : AccessibilityService() {
         @Volatile private var lastCaptureAt: Long = 0L
         @Volatile private var latestScreenPackage: String = ""
         @Volatile private var latestScreenCaptureCount: Int = 0
+        @Volatile private var lastNotificationAt: Long = 0L
         const val SCREEN_NOTIFICATION_ID = 7304
         const val SCREEN_CHANNEL_ID = "amara_screen_learning"
         fun instance(): MyAccessibilityService? = activeService?.get()
